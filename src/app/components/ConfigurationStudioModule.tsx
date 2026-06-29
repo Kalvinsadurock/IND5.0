@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as Icons from '@/shared/ui/icons';
+import { readJsonResponse, responseError } from '@/lib/http';
 
 const supportedFieldTypes = ['text', 'textarea', 'number', 'decimal', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'file', 'user_reference', 'object_reference'];
 const initialObjectTypes = [
@@ -20,10 +21,10 @@ function useData<T>(url: string, fallback: T) {
     async function load() {
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const json = await res.json();
+        const json = await readJsonResponse<T>(res);
+        if (!res.ok) throw new Error(responseError(res, json, 'Failed to load configuration data'));
         if (active) {
-          setData(json);
+          setData(json ?? fallback);
           setError(null);
         }
       } catch (err) {

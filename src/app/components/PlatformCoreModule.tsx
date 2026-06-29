@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as Icons from '@/shared/ui/icons';
 import { TenantOnboardingWizard } from './TenantOnboardingWizard';
+import { readJsonResponse, responseError } from '@/lib/http';
 
 type LoadState<T> = {
   data: T;
@@ -18,9 +19,9 @@ function usePlatformData<T>(url: string, fallback: T): LoadState<T> {
     async function load() {
       try {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-        const data = await res.json();
-        if (active) setState({ data, error: null, loading: false });
+        const data = await readJsonResponse<T>(res);
+        if (!res.ok) throw new Error(responseError(res, data, 'Failed to load platform data'));
+        if (active) setState({ data: data ?? fallback, error: null, loading: false });
       } catch (error) {
         if (active) setState({ data: fallback, error: error instanceof Error ? error.message : 'Failed to load', loading: false });
       }

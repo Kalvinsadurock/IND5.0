@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import * as Icons from '@/shared/ui/icons';
+import { readJsonResponse, responseError } from '@/lib/http';
 
 type OnboardingResult = {
   tenant?: { id: string; name: string; code: string; industryType?: string };
@@ -92,8 +93,9 @@ export function TenantOnboardingWizard({ onCompleted }: { onCompleted?: () => vo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body?.error || 'Onboarding failed');
+      const body = await readJsonResponse<OnboardingResult & { error?: string; message?: string }>(response);
+      if (!response.ok) throw new Error(responseError(response, body, 'Onboarding failed'));
+      if (!body) throw new Error('Onboarding completed without a response body');
       setResult(body);
       onCompleted?.();
     } catch (err) {
