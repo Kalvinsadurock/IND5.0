@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as Icons from '@/shared/ui/icons';
+import { TenantOnboardingWizard } from './TenantOnboardingWizard';
 
 type LoadState<T> = {
   data: T;
@@ -91,13 +92,15 @@ function MiniTable({ columns, rows }: { columns: string[]; rows: any[] }) {
 }
 
 export default function PlatformCoreModule() {
-  const tenants = usePlatformData<any[]>('/api/platform/tenants', emptyList);
-  const companies = usePlatformData<any[]>('/api/platform/companies', emptyList);
-  const plants = usePlatformData<any[]>('/api/platform/plants', emptyList);
-  const users = usePlatformData<any[]>('/api/platform/users', emptyList);
-  const roles = usePlatformData<any[]>('/api/platform/roles', emptyList);
-  const permissions = usePlatformData<any[]>('/api/platform/permissions', emptyList);
-  const audit = usePlatformData<any[]>('/api/platform/audit-events', emptyList);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshParam = `?refresh=${refreshKey}`;
+  const tenants = usePlatformData<any[]>(`/api/platform/tenants${refreshParam}`, emptyList);
+  const companies = usePlatformData<any[]>(`/api/platform/companies${refreshParam}`, emptyList);
+  const plants = usePlatformData<any[]>(`/api/platform/plants${refreshParam}`, emptyList);
+  const users = usePlatformData<any[]>(`/api/platform/users${refreshParam}`, emptyList);
+  const roles = usePlatformData<any[]>(`/api/platform/roles${refreshParam}`, emptyList);
+  const permissions = usePlatformData<any[]>(`/api/platform/permissions${refreshParam}`, emptyList);
+  const audit = usePlatformData<any[]>(`/api/platform/audit-events${refreshParam}`, emptyList);
 
   const errors = [tenants, companies, plants, users, roles, permissions, audit].map((s) => s.error).filter(Boolean);
   const loading = [tenants, companies, plants, users, roles, permissions, audit].some((s) => s.loading);
@@ -124,6 +127,8 @@ export default function PlatformCoreModule() {
           Platform tables are not fully available yet. Run the database migration/push before using live setup APIs. First error: {errors[0]}
         </div>
       )}
+
+      <TenantOnboardingWizard onCompleted={() => setRefreshKey((key) => key + 1)} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Tenants" value={tenants.data.length} helper="Customer companies configured" icon={Icons.Layers} tone="emerald" />
