@@ -49,48 +49,34 @@ export function OperatorPreShift() {
 
     setLoading(true)
 
-    // Check for existing active shift on this machine
-    const { data: existingShift } = await supabase
-      .from('shifts')
-      .select('id')
-      .eq('machine_id', selectedMachine.id)
-      .eq('status', 'active')
-      .maybeSingle()
-
-    if (existingShift) {
-      addToast({
-        title: 'Active shift exists',
-        description: 'This machine already has an active shift. End it before starting a new one.',
-        variant: 'warning',
-      })
-      setLoading(false)
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('shifts')
-      .insert({
-        machine_id: selectedMachine.id,
-        shift_type: shiftType,
-        operator_id: user.auth_user_id || String(user.id).replace('demo-', ''),
-        planned_duration_min: 480, // Default 8 hours
-      })
-      .select()
-      .maybeSingle()
-
-    if (error) {
-      addToast({
-        title: 'Failed to start shift',
-        description: error.message,
-        variant: 'destructive',
-      })
-    } else if (data) {
-      startShift(data)
-      addToast({
-        title: 'Shift Started',
-        description: `${selectedMachine.name} — Shift ${shiftType}`,
-        variant: 'success',
-      })
+    try {
+      const res = await fetch('/api/oee/shift/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-tenant-id': 'test-tenant-id'
+        },
+        body: JSON.stringify({
+          workCenterId: selectedMachine.id,
+          plannedRuntimeMinutes: 480
+        })
+      });
+      const data = await res.json();
+      if (data && !data.error) {
+        startShift({
+          id: data.id,
+          machine_id: selectedMachine.id,
+          shift_type: shiftType,
+          status: 'active'
+        });
+        addToast({
+          title: 'Shift Started',
+          description: `${selectedMachine.name} — Shift ${shiftType}`,
+          variant: 'success',
+        });
+      }
+    } catch (e) {
+      console.error(e);
     }
     setLoading(false)
   }
