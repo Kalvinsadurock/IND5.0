@@ -48,7 +48,7 @@ export function OperatorPreShift() {
     if (!selectedMachine || !user) return
 
     setLoading(true)
-    const activeTenantId = user.tenantId || 'test-tenant-id';
+    const activeTenantId = (user as any).tenantId || 'test-tenant-id';
 
     try {
       const res = await fetch('/api/oee/shift/start', {
