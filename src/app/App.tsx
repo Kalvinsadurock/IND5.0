@@ -22,6 +22,7 @@ const ICTModule = lazy(() => import('./components/ICTModule'));
 const PlatformCoreModule = lazy(() => import('./components/PlatformCoreModule'));
 const ConfigurationStudioModule = lazy(() => import('./components/ConfigurationStudioModule'));
 const SapIntegrationModule = lazy(() => import('./components/SapIntegrationModule'));
+const WorkforceManager = lazy(() => import('./components/WorkforceManager'));
 
 // Loading fallback component
 function TabLoadingFallback() {
@@ -129,6 +130,12 @@ export default function App() {
         return (
           <Suspense fallback={<TabLoadingFallback />}>
             <SapIntegrationModule />
+          </Suspense>
+        );
+      case 'hrms':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <WorkforceManager />
           </Suspense>
         );
       default:

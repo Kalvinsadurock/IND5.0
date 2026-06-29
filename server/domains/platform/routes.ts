@@ -20,6 +20,9 @@ import {
   workflowDefinitions,
   workflowStates,
   workflowTransitions,
+  hrmsEmployeeProfiles,
+  hrmsShiftCalendars,
+  hrmsShiftAssignments
 } from "../../../shared/schema";
 
 const router = Router();
@@ -993,6 +996,48 @@ router.get("/platform/templates/:industryKey/preview", async (req, res) => {
     res.json(template);
   } catch (error) {
     handleError(res, error, "Failed to fetch template preview");
+  }
+});
+
+router.get("/hrms/employees", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const rows = await db.select().from(hrmsEmployeeProfiles).where(eq(hrmsEmployeeProfiles.tenantId, tenantId));
+    res.json(rows);
+  } catch (error) {
+    handleError(res, error, "Failed to fetch HRMS employees");
+  }
+});
+
+router.post("/hrms/employees", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const [created] = await db.insert(hrmsEmployeeProfiles).values({
+      tenantId,
+      employeeCode: req.body.employeeCode,
+      displayName: req.body.displayName,
+      employeeType: req.body.employeeType || "internal",
+      status: req.body.status || "active",
+      email: req.body.email,
+      joiningDate: req.body.joiningDate ? new Date(req.body.joiningDate) : null,
+    } as any).returning();
+    await audit(req, { tenantId, eventType: "employee.created", entityType: "employee", entityId: created.id, action: "create", afterSnapshot: created });
+    res.status(201).json(created);
+  } catch (error) {
+    handleError(res, error, "Failed to create HRMS employee");
+  }
+});
+
+router.get("/hrms/shifts/assignments", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const rows = await db.select().from(hrmsShiftAssignments).where(eq(hrmsShiftAssignments.tenantId, tenantId));
+    res.json(rows);
+  } catch (error) {
+    handleError(res, error, "Failed to fetch shift assignments");
   }
 });
 

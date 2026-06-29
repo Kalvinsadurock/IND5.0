@@ -430,6 +430,57 @@ export const mesWorkOrders = pgTable("mes_work_orders", {
   index("mes_work_orders_priority_idx").on(table.tenantId, table.priority),
 ]);
 
+export const hrmsEmployeeProfiles = pgTable("hrms_employee_profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  employeeCode: varchar("employee_code", { length: 80 }).notNull(),
+  displayName: varchar("display_name", { length: 180 }).notNull(),
+  employeeType: varchar("employee_type", { length: 40 }).notNull().default("internal"),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  email: varchar("email", { length: 180 }),
+  joiningDate: timestamp("joining_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("hrms_employees_tenant_idx").on(table.tenantId),
+  index("hrms_employees_code_idx").on(table.tenantId, table.employeeCode),
+]);
+
+export const hrmsSkillCatalog = pgTable("hrms_skill_catalog", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  skillCode: varchar("skill_code", { length: 80 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  category: varchar("category", { length: 80 }),
+  active: boolean("active").notNull().default(true),
+});
+
+export const hrmsEmployeeSkills = pgTable("hrms_employee_skills", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  employeeId: uuid("employee_id").references(() => hrmsEmployeeProfiles.id).notNull(),
+  skillId: uuid("skill_id").references(() => hrmsSkillCatalog.id).notNull(),
+  proficiencyLevel: varchar("proficiency_level", { length: 40 }).notNull().default("beginner"),
+});
+
+export const hrmsShiftCalendars = pgTable("hrms_shift_calendars", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  shiftCode: varchar("shift_code", { length: 40 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  startTime: varchar("start_time", { length: 10 }).notNull(),
+  endTime: varchar("end_time", { length: 10 }).notNull(),
+  active: boolean("active").notNull().default(true),
+});
+
+export const hrmsShiftAssignments = pgTable("hrms_shift_assignments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  shiftCalendarId: uuid("shift_calendar_id").references(() => hrmsShiftCalendars.id).notNull(),
+  shiftDate: timestamp("shift_date").notNull(),
+  employeeId: uuid("employee_id").references(() => hrmsEmployeeProfiles.id).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("assigned"),
+});
+
 // KIT INVENTORY (Process-driven, one kit = one row)
 export const kit_inventory = pgTable("kit_inventory", {
   id: serial("id").primaryKey(),
