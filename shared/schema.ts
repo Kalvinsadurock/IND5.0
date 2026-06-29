@@ -485,6 +485,8 @@ export const oeeShiftRuns = pgTable("oee_shift_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
   tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
   workCenterId: uuid("work_center_id").references(() => platformWorkCenters.id).notNull(),
+  shiftAssignmentId: uuid("shift_assignment_id").references(() => hrmsShiftAssignments.id),
+  operatorEmployeeId: uuid("operator_employee_id").references(() => hrmsEmployeeProfiles.id),
   shiftDate: timestamp("shift_date").notNull(),
   plannedRuntimeMinutes: integer("planned_runtime_minutes").notNull().default(480),
   actualRuntimeMinutes: integer("actual_runtime_minutes").notNull().default(0),
@@ -497,6 +499,7 @@ export const oeeDowntimeEvents = pgTable("oee_downtime_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
   shiftRunId: uuid("shift_run_id").references(() => oeeShiftRuns.id).notNull(),
+  workCenterId: uuid("work_center_id").references(() => platformWorkCenters.id).notNull(),
   downtimeReason: varchar("downtime_reason", { length: 180 }).notNull(),
   durationMinutes: integer("duration_minutes").notNull().default(0),
   loggedAt: timestamp("logged_at").defaultNow().notNull(),
@@ -506,8 +509,10 @@ export const oeeProductionCounts = pgTable("oee_production_counts", {
   id: uuid("id").defaultRandom().primaryKey(),
   tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
   shiftRunId: uuid("shift_run_id").references(() => oeeShiftRuns.id).notNull(),
+  workOrderId: uuid("work_order_id").references(() => mesWorkOrders.id).notNull(),
   goodCount: integer("good_count").notNull().default(0),
   rejectCount: integer("reject_count").notNull().default(0),
+  idealCycleTimeSeconds: integer("ideal_cycle_time_seconds").notNull().default(10),
   loggedAt: timestamp("logged_at").defaultNow().notNull(),
 });
 

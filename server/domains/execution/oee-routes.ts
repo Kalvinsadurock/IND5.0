@@ -38,6 +38,26 @@ router.post("/oee/shift/start", async (req, res) => {
   }
 });
 
+router.post("/oee/shift/:shiftId/end", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const [run] = await db.select().from(oeeShiftRuns).where(eq(oeeShiftRuns.id, req.params.shiftId));
+    if (!run) return res.status(404).json({ error: "Shift run not found" });
+    const downtimes = await db.select().from(oeeDowntimeEvents).where(eq(oeeDowntimeEvents.shiftRunId, run.id));
+    const totalDowntime = downtimes.reduce((sum, d) => sum + (d.durationMinutes || 0), 0);
+    const actualRuntime = Math.max(0, run.plannedRuntimeMinutes - totalDowntime);
+    const [updated] = await db.update(oeeShiftRuns).set({
+      status: "ended",
+      actualRuntimeMinutes: actualRuntime,
+      endedAt: new Date()
+    } as any).where(eq(oeeShiftRuns.id, req.params.shiftId)).returning();
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to end shift run" });
+  }
+});
+
 router.post("/oee/downtime/log", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
@@ -45,6 +65,7 @@ router.post("/oee/downtime/log", async (req, res) => {
     const [created] = await db.insert(oeeDowntimeEvents).values({
       tenantId,
       shiftRunId: req.body.shiftRunId,
+      workCenterId: req.body.workCenterId,
       downtimeReason: req.body.downtimeReason,
       durationMinutes: req.body.durationMinutes || 0,
     } as any).returning();
@@ -61,12 +82,62 @@ router.post("/oee/production/log", async (req, res) => {
     const [created] = await db.insert(oeeProductionCounts).values({
       tenantId,
       shiftRunId: req.body.shiftRunId,
+      workOrderId: req.body.workOrderId,
       goodCount: req.body.goodCount || 0,
       rejectCount: req.body.rejectCount || 0,
+      idealCycleTimeSeconds: req.body.idealCycleTimeSeconds || 10,
     } as any).returning();
     res.status(201).json(created);
   } catch (error) {
     res.status(500).json({ error: "Failed to log production count" });
+  }
+});
+
+router.get("/oee/dashboard", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const runs = await db.select().from(oeeShiftRuns).where(eq(oeeShiftRuns.tenantId, tenantId));
+    let availabilitySum = 0;
+    let performanceSum = 0;
+    let qualitySum = 0;
+    let count = 0;
+
+    for (const run of runs) {
+      const downtimes = await db.select().from(oeeDowntimeEvents).where(eq(oeeDowntimeEvents.shiftRunId, run.id));
+      const prod = await db.select().from(oeeProductionCounts).where(eq(oeeProductionCounts.shiftRunId, run.id));
+      const totalDowntime = downtimes.reduce((sum, d) => sum + (d.durationMinutes || 0), 0);
+      const totalGood = prod.reduce((sum, p) => sum + (p.goodCount || 0), 0);
+      const totalReject = prod.reduce((sum, p) => sum + (p.rejectCount || 0), 0);
+      
+      const planned = run.plannedRuntimeMinutes || 480;
+      const actual = Math.max(1, planned - totalDowntime);
+      
+      const a = planned > 0 ? (planned - totalDowntime) / planned : 0;
+      const totalParts = totalGood + totalReject;
+      const p = actual > 0 ? (totalParts * 10) / (actual * 60) : 0;
+      const q = totalParts > 0 ? totalGood / totalParts : 0;
+
+      availabilitySum += a;
+      performanceSum += p;
+      qualitySum += q;
+      count++;
+    }
+
+    const divisor = count || 1;
+    const availability = (availabilitySum / divisor) * 100;
+    const performance = Math.min(100, (performanceSum / divisor) * 100);
+    const quality = (qualitySum / divisor) * 100;
+    const oee = (availability * performance * quality) / 10000;
+
+    res.json({
+      availability: parseFloat(availability.toFixed(1)),
+      performance: parseFloat(performance.toFixed(1)),
+      quality: parseFloat(quality.toFixed(1)),
+      oee: parseFloat(oee.toFixed(1))
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to calculate OEE metrics" });
   }
 });
 
