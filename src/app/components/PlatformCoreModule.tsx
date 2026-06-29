@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as Icons from '@/shared/ui/icons';
 import { TenantOnboardingWizard } from './TenantOnboardingWizard';
 import { PlantHierarchyManager } from './PlantHierarchyManager';
+import RolePermissionMatrix from './RolePermissionMatrix';
 import { readJsonResponse, responseError } from '@/lib/http';
 
 type LoadState<T> = {
@@ -133,6 +134,8 @@ export default function PlatformCoreModule() {
       <TenantOnboardingWizard onCompleted={() => setRefreshKey((key) => key + 1)} />
 
       <PlantHierarchyManager />
+
+      <RolePermissionMatrix />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Tenants" value={tenants.data.length} helper="Customer companies configured" icon={Icons.Layers} tone="emerald" />

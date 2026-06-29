@@ -547,8 +547,258 @@ router.get("/platform/tenant/readiness", async (req, res) => {
       { item: "Released Work Orders Available", completed: workOrderCompleted, link: "/operations" },
       { item: "OEE Tracking Active", completed: oeeCompleted, link: "/oee" }
     ]);
+});
+
+router.get("/platform/hierarchy/tree", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+
+    const plants = await db.select().from(platformPlants).where(eq(platformPlants.tenantId, tenantId));
+    const areas = await db.select().from(platformAreas).where(eq(platformAreas.tenantId, tenantId));
+    const lines = await db.select().from(platformLines).where(eq(platformLines.tenantId, tenantId));
+    const workCenters = await db.select().from(platformWorkCenters).where(eq(platformWorkCenters.tenantId, tenantId));
+
+    const tree = plants.map((plant) => {
+      const plantAreas = areas.filter((a) => a.plantId === plant.id);
+      return {
+        id: plant.id,
+        name: plant.name,
+        code: plant.code,
+        type: "plant",
+        children: plantAreas.map((area) => {
+          const areaLines = lines.filter((l) => l.areaId === area.id);
+          return {
+            id: area.id,
+            name: area.name,
+            code: area.code,
+            type: "area",
+            children: areaLines.map((line) => {
+              const lineWC = workCenters.filter((wc) => wc.lineId === line.id);
+              return {
+                id: line.id,
+                name: line.name,
+                code: line.code,
+                type: "line",
+                children: lineWC.map((wc) => ({
+                  id: wc.id,
+                  name: wc.name,
+                  code: wc.code,
+                  type: "work_center"
+                }))
+              };
+            })
+          };
+        })
+      };
+    });
+
+    res.json(tree);
   } catch (error) {
-    handleError(res, error, "Failed to fetch tenant readiness status");
+    handleError(res, error, "Failed to fetch hierarchy tree");
+  }
+});
+
+router.post("/platform/hierarchy/:type", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const { type } = req.params;
+    const { name, code, parentId } = req.body;
+
+    let created: any;
+    if (type === "plant") {
+      [created] = await db.insert(platformPlants).values({
+        tenantId,
+        name,
+        code,
+        status: "active"
+      } as any).returning();
+    } else if (type === "area") {
+      [created] = await db.insert(platformAreas).values({
+        tenantId,
+        plantId: parentId,
+        name,
+        code,
+        status: "active"
+      } as any).returning();
+    } else if (type === "line") {
+      const [parentArea] = await db.select().from(platformAreas).where(eq(platformAreas.id, parentId));
+      [created] = await db.insert(platformLines).values({
+        tenantId,
+        plantId: parentArea ? parentArea.plantId : null,
+        areaId: parentId,
+        name,
+        code,
+        status: "active"
+      } as any).returning();
+    } else if (type === "work_center") {
+      const [parentLine] = await db.select().from(platformLines).where(eq(platformLines.id, parentId));
+      [created] = await db.insert(platformWorkCenters).values({
+        tenantId,
+        plantId: parentLine ? parentLine.plantId : null,
+        lineId: parentId,
+        name,
+        code,
+        status: "active"
+      } as any).returning();
+    } else {
+      return res.status(400).json({ error: "Invalid node type" });
+    }
+
+    await audit(req, {
+      tenantId,
+      eventType: "hierarchy.node_added",
+      entityType: type,
+      entityId: created.id,
+      action: "create",
+      afterSnapshot: created
+    });
+
+    res.status(201).json(created);
+  } catch (error) {
+    handleError(res, error, "Failed to add hierarchy node");
+  }
+});
+
+router.patch("/platform/hierarchy/:type/:id", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const { type, id } = req.params;
+    const { name, code } = req.body;
+
+    let updated: any;
+    if (type === "plant") {
+      const [before] = await db.select().from(platformPlants).where(eq(platformPlants.id, id));
+      [updated] = await db.update(platformPlants).set({ name, code } as any).where(eq(platformPlants.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_updated", entityType: type, entityId: id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    } else if (type === "area") {
+      const [before] = await db.select().from(platformAreas).where(eq(platformAreas.id, id));
+      [updated] = await db.update(platformAreas).set({ name, code } as any).where(eq(platformAreas.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_updated", entityType: type, entityId: id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    } else if (type === "line") {
+      const [before] = await db.select().from(platformLines).where(eq(platformLines.id, id));
+      [updated] = await db.update(platformLines).set({ name, code } as any).where(eq(platformLines.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_updated", entityType: type, entityId: id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    } else if (type === "work_center") {
+      const [before] = await db.select().from(platformWorkCenters).where(eq(platformWorkCenters.id, id));
+      [updated] = await db.update(platformWorkCenters).set({ name, code } as any).where(eq(platformWorkCenters.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_updated", entityType: type, entityId: id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    } else {
+      return res.status(400).json({ error: "Invalid node type" });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    handleError(res, error, "Failed to update hierarchy node");
+  }
+});
+
+router.delete("/platform/hierarchy/:type/:id", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const { type, id } = req.params;
+
+    if (type === "plant") {
+      const areas = await db.select().from(platformAreas).where(eq(platformAreas.plantId, id));
+      if (areas.length > 0) return res.status(400).json({ canDelete: false, reason: "Plant contains active areas" });
+      const [deleted] = await db.delete(platformPlants).where(eq(platformPlants.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+    } else if (type === "area") {
+      const lines = await db.select().from(platformLines).where(eq(platformLines.areaId, id));
+      if (lines.length > 0) return res.status(400).json({ canDelete: false, reason: "Area contains active lines" });
+      const [deleted] = await db.delete(platformAreas).where(eq(platformAreas.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+    } else if (type === "line") {
+      const workCenters = await db.select().from(platformWorkCenters).where(eq(platformWorkCenters.lineId, id));
+      if (workCenters.length > 0) return res.status(400).json({ canDelete: false, reason: "Line contains active work centers" });
+      const [deleted] = await db.delete(platformLines).where(eq(platformLines.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+    } else if (type === "work_center") {
+      const { oeeShiftRuns } = await import("../../../shared/schema");
+      const activeShifts = await db.select().from(oeeShiftRuns).where(eq(oeeShiftRuns.workCenterId, id));
+      if (activeShifts.length > 0) return res.status(400).json({ canDelete: false, reason: "Work Center has active OEE/Shift logging records" });
+      const [deleted] = await db.delete(platformWorkCenters).where(eq(platformWorkCenters.id, id)).returning();
+      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+    } else {
+      return res.status(400).json({ error: "Invalid node type" });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    handleError(res, error, "Failed to delete hierarchy node");
+  }
+});
+
+router.get("/platform/rbac/matrix", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+
+    const roles = await db.select().from(platformRoles).where(eq(platformRoles.tenantId, tenantId));
+    const permissions = await db.select().from(platformPermissions);
+    const rolePermissions = await db.select().from(platformRolePermissions).where(eq(platformRolePermissions.tenantId, tenantId));
+
+    res.json({
+      roles,
+      permissions,
+      matrix: rolePermissions
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch RBAC matrix");
+  }
+});
+
+router.put("/platform/rbac/matrix", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+    const { roleId, permissionId, state } = req.body;
+
+    if (state === false) {
+      // Prevent lockout warning checks
+      const [perm] = await db.select().from(platformPermissions).where(eq(platformPermissions.id, permissionId));
+      if (perm && (perm.code === "platform.tenant.manage" || perm.code === "platform.role.manage")) {
+        const remaining = await db.select().from(platformRolePermissions).where(
+          and(
+            eq(platformRolePermissions.tenantId, tenantId),
+            eq(platformRolePermissions.permissionId, permissionId)
+          )
+        );
+        if (remaining.length <= 1) {
+          return res.status(400).json({ error: "Tenant lockout prevention: At least one Administrator role must retain this platform permission." });
+        }
+      }
+
+      await db.delete(platformRolePermissions).where(
+        and(
+          eq(platformRolePermissions.tenantId, tenantId),
+          eq(platformRolePermissions.roleId, roleId),
+          eq(platformRolePermissions.permissionId, permissionId)
+        )
+      );
+    } else {
+      await db.insert(platformRolePermissions).values({
+        tenantId,
+        roleId,
+        permissionId
+      } as any);
+    }
+
+    await audit(req, {
+      tenantId,
+      eventType: "rbac.matrix_toggled",
+      entityType: "rbac",
+      entityId: roleId,
+      action: "toggle",
+      metadata: { roleId, permissionId, state }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    handleError(res, error, "Failed to update RBAC matrix cell");
   }
 });
 
