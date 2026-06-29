@@ -22,6 +22,7 @@ const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: Icons.LayoutDashboard },
   { id: 'platform', label: 'Platform Core', icon: Icons.ShieldCheck },
   { id: 'configuration', label: 'Configuration', icon: Icons.Settings },
+  { id: 'work-orders', label: 'Work Orders', icon: Icons.FileText },
   { id: 'inventory', label: 'Inventory', icon: Icons.Package },
   { id: 'operations', label: 'Operations', icon: Icons.Activity },
   { id: 'process', label: 'Process', icon: Icons.Layers },
@@ -47,19 +48,19 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const userRole = user?.role?.toLowerCase() || 'operator';
 
   const roleAccessMap: Record<string, string[]> = {
-    admin: ['dashboard', 'platform', 'configuration', 'inventory', 'operations', 'process', 'quality', 'supply', 'oee', 'ict', 'sap-integration', 'hrms', 'checklist'],
+    admin: ['dashboard', 'platform', 'configuration', 'work-orders', 'inventory', 'operations', 'process', 'quality', 'supply', 'oee', 'ict', 'sap-integration', 'hrms', 'checklist'],
     inventory_engineer: ['dashboard', 'inventory', 'oee', 'ict'],
-    production_engineer: ['dashboard', 'process', 'quality', 'operations', 'oee', 'ict'],
-    production_supervisor: ['dashboard', 'process', 'operations', 'oee', 'ict'],
+    production_engineer: ['dashboard', 'work-orders', 'process', 'quality', 'operations', 'oee', 'ict'],
+    production_supervisor: ['dashboard', 'work-orders', 'process', 'operations', 'oee', 'ict'],
     quality_engineer: ['dashboard', 'quality', 'process', 'operations', 'oee'],
     quality_inspector: ['dashboard', 'quality', 'process', 'operations'],
-    production_manager: ['dashboard', 'quality', 'process', 'operations'],
+    production_manager: ['dashboard', 'work-orders', 'quality', 'process', 'operations'],
     quality_manager: ['dashboard', 'quality', 'process', 'operations'],
-    plant_head: ['dashboard', 'platform', 'configuration', 'inventory', 'process', 'quality', 'operations', 'ict'],
-    management_user: ['dashboard', 'platform', 'configuration', 'inventory', 'process', 'quality', 'operations', 'ict'],
+    plant_head: ['dashboard', 'platform', 'configuration', 'work-orders', 'inventory', 'process', 'quality', 'operations', 'oee', 'ict', 'sap-integration', 'hrms', 'checklist'],
+    management_user: ['dashboard', 'platform', 'configuration', 'work-orders', 'inventory', 'process', 'quality', 'operations', 'oee', 'ict', 'sap-integration', 'hrms', 'checklist'],
     inventory_manager: ['dashboard', 'operations', 'supply', 'inventory', 'ict'],
-    leadership: ['dashboard', 'platform', 'configuration', 'process', 'quality', 'operations', 'ict'],
-    operator: ['dashboard', 'process', 'operations', 'quality', 'oee', 'ict']
+    leadership: ['dashboard', 'platform', 'configuration', 'work-orders', 'process', 'quality', 'operations', 'oee', 'ict', 'sap-integration', 'hrms', 'checklist'],
+    operator: ['dashboard', 'work-orders', 'process', 'operations', 'quality', 'oee', 'ict']
   };
 
   const allowedViews = roleAccessMap[userRole] || roleAccessMap.operator;

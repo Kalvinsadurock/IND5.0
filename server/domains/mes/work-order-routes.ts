@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../../db";
+import { validateCustomFields } from "../../lib/validation";
 import {
   mesWorkOrders,
   platformAuditEvents,
@@ -82,8 +83,6 @@ router.get("/mes/work-orders", async (req, res) => {
     handleError(res, error, "Failed to fetch work orders");
   }
 });
-
-import { validateCustomFields } from "../../lib/validation";
 
 router.post("/mes/work-orders", async (req, res) => {
   try {

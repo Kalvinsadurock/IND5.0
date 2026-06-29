@@ -25,6 +25,7 @@ const SapIntegrationModule = lazy(() => import('./components/SapIntegrationModul
 const WorkforceManager = lazy(() => import('./components/WorkforceManager'));
 const PilotReadinessChecklist = lazy(() => import('./components/PilotReadinessChecklist'));
 const InviteAcceptance = lazy(() => import('./components/InviteAcceptance'));
+const WorkOrderStudio = lazy(() => import('./components/WorkOrderStudio'));
 
 // Loading fallback component
 function TabLoadingFallback() {
@@ -153,6 +154,12 @@ export default function App() {
         return (
           <Suspense fallback={<TabLoadingFallback />}>
             <PilotReadinessChecklist />
+          </Suspense>
+        );
+      case 'work-orders':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <WorkOrderStudio />
           </Suspense>
         );
       default:
