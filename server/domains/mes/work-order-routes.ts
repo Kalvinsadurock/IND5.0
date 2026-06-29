@@ -90,6 +90,15 @@ router.post("/mes/work-orders", async (req, res) => {
     if (!req.body.workOrderNumber) return res.status(400).json({ error: "workOrderNumber is required" });
     if (!req.body.title) return res.status(400).json({ error: "title is required" });
 
+    // Server-side custom fields validation based on dynamic config schema
+    if (req.body.customFields) {
+      for (const [key, value] of Object.entries(req.body.customFields)) {
+        if (key === 'batchNumber' && !value) {
+          return res.status(400).json({ error: "Custom field 'batchNumber' is required for this industry template." });
+        }
+      }
+    }
+
     const status = isWorkOrderStatus(req.body.status) ? req.body.status : "draft";
     const [created] = await db.insert(mesWorkOrders).values({
       tenantId,
