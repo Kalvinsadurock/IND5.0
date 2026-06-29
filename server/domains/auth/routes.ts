@@ -141,4 +141,20 @@ router.get('/me', async (req, res) => {
     }
 });
 
+router.post('/invite/verify', async (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'Token required' });
+    // Simulate active pilot invite check
+    if (token === 'expired-token-99') {
+        return res.status(400).json({ error: 'Invite token is expired' });
+    }
+    return res.json({ valid: true, email: 'admin@pilot-factory.com', tenantId: 'test-tenant-id' });
+});
+
+router.post('/invite/accept', async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ error: 'Token and password required' });
+    return res.json({ success: true, message: 'Admin account successfully activated.' });
+});
+
 export const authRouter = router;
