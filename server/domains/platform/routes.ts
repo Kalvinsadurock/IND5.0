@@ -140,6 +140,64 @@ function makeCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 36) || "TENANT";
 }
 
+function plantIdFrom(req: any) {
+  return req.query.plantId || req.body?.plantId || null;
+}
+
+function hierarchyWhere(table: any, req: any) {
+  const filters = [];
+  const tenantId = tenantIdFrom(req);
+  const plantId = plantIdFrom(req);
+  if (tenantId) filters.push(eq(table.tenantId, tenantId));
+  if (plantId && table.plantId) filters.push(eq(table.plantId, plantId));
+  return filters.length > 1 ? and(...filters) : filters[0];
+}
+
+function cleanHierarchyUpdate(body: any, fields: string[]) {
+  const update: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) update[field] = body[field] || null;
+  }
+  update.updatedAt = new Date();
+  return update;
+}
+
+async function findHierarchyRow(table: any, id: string, tenantId: string | null) {
+  const filters = tenantId ? and(eq(table.id, id), eq(table.tenantId, tenantId)) : eq(table.id, id);
+  const [row] = await db.select().from(table).where(filters);
+  return row;
+}
+
+async function deleteHierarchyRow(req: any, res: any, config: {
+  table: any;
+  entityType: string;
+  eventType: string;
+  errorMessage: string;
+}) {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const before = await findHierarchyRow(config.table, req.params.id, tenantId);
+    if (!before) return res.status(404).json({ error: `${config.entityType} not found` });
+    const filters = tenantId ? and(eq(config.table.id, req.params.id), eq(config.table.tenantId, tenantId)) : eq(config.table.id, req.params.id);
+    const deletedRows = await db.delete(config.table).where(filters).returning() as any[];
+    const [deleted] = deletedRows;
+    await audit(req, {
+      tenantId,
+      eventType: config.eventType,
+      entityType: config.entityType,
+      entityId: req.params.id,
+      action: "delete",
+      beforeSnapshot: before,
+    });
+    res.json(deleted);
+  } catch (error: any) {
+    if (error?.code === "23503") {
+      return res.status(409).json({ error: `${config.entityType} is still referenced by child hierarchy records` });
+    }
+    handleError(res, error, config.errorMessage);
+  }
+}
+
 async function ensurePermission(permission: typeof defaultPermissions[number]) {
   const [, , , code] = permission;
   const [existing] = await db.select().from(platformPermissions).where(eq(platformPermissions.code, code));
@@ -604,6 +662,7 @@ router.get("/platform/plants/:id/hierarchy", async (req, res) => {
 router.post("/platform/areas", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
     const [created] = await db.insert(platformAreas).values({ tenantId, ...req.body } as any).returning();
     await audit(req, { tenantId, eventType: "area.created", entityType: "area", entityId: created.id, action: "create", afterSnapshot: created });
     res.status(201).json(created);
@@ -612,9 +671,43 @@ router.post("/platform/areas", async (req, res) => {
   }
 });
 
+router.get("/platform/areas", async (req, res) => {
+  try {
+    const filters = hierarchyWhere(platformAreas, req);
+    res.json(filters ? await db.select().from(platformAreas).where(filters) : await db.select().from(platformAreas));
+  } catch (error) {
+    handleError(res, error, "Failed to fetch areas");
+  }
+});
+
+router.patch("/platform/areas/:id", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const before = await findHierarchyRow(platformAreas, req.params.id, tenantId);
+    if (!before) return res.status(404).json({ error: "area not found" });
+    const update = cleanHierarchyUpdate(req.body, ["plantId", "name", "code", "areaType", "status"]);
+    const filters = tenantId ? and(eq(platformAreas.id, req.params.id), eq(platformAreas.tenantId, tenantId)) : eq(platformAreas.id, req.params.id);
+    const [updated] = await db.update(platformAreas).set(update as any).where(filters).returning();
+    await audit(req, { tenantId, eventType: "area.updated", entityType: "area", entityId: updated.id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    res.json(updated);
+  } catch (error) {
+    handleError(res, error, "Failed to update area");
+  }
+});
+
+router.delete("/platform/areas/:id", async (req, res) => {
+  await deleteHierarchyRow(req, res, {
+    table: platformAreas,
+    entityType: "area",
+    eventType: "area.deleted",
+    errorMessage: "Failed to delete area",
+  });
+});
+
 router.post("/platform/departments", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
     const [created] = await db.insert(platformDepartments).values({ tenantId, ...req.body } as any).returning();
     await audit(req, { tenantId, eventType: "department.created", entityType: "department", entityId: created.id, action: "create", afterSnapshot: created });
     res.status(201).json(created);
@@ -623,9 +716,43 @@ router.post("/platform/departments", async (req, res) => {
   }
 });
 
+router.get("/platform/departments", async (req, res) => {
+  try {
+    const filters = hierarchyWhere(platformDepartments, req);
+    res.json(filters ? await db.select().from(platformDepartments).where(filters) : await db.select().from(platformDepartments));
+  } catch (error) {
+    handleError(res, error, "Failed to fetch departments");
+  }
+});
+
+router.patch("/platform/departments/:id", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const before = await findHierarchyRow(platformDepartments, req.params.id, tenantId);
+    if (!before) return res.status(404).json({ error: "department not found" });
+    const update = cleanHierarchyUpdate(req.body, ["plantId", "name", "code", "functionType", "status"]);
+    const filters = tenantId ? and(eq(platformDepartments.id, req.params.id), eq(platformDepartments.tenantId, tenantId)) : eq(platformDepartments.id, req.params.id);
+    const [updated] = await db.update(platformDepartments).set(update as any).where(filters).returning();
+    await audit(req, { tenantId, eventType: "department.updated", entityType: "department", entityId: updated.id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    res.json(updated);
+  } catch (error) {
+    handleError(res, error, "Failed to update department");
+  }
+});
+
+router.delete("/platform/departments/:id", async (req, res) => {
+  await deleteHierarchyRow(req, res, {
+    table: platformDepartments,
+    entityType: "department",
+    eventType: "department.deleted",
+    errorMessage: "Failed to delete department",
+  });
+});
+
 router.post("/platform/lines", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
     const [created] = await db.insert(platformLines).values({ tenantId, ...req.body } as any).returning();
     await audit(req, { tenantId, eventType: "line.created", entityType: "line", entityId: created.id, action: "create", afterSnapshot: created });
     res.status(201).json(created);
@@ -634,15 +761,82 @@ router.post("/platform/lines", async (req, res) => {
   }
 });
 
+router.get("/platform/lines", async (req, res) => {
+  try {
+    const filters = hierarchyWhere(platformLines, req);
+    res.json(filters ? await db.select().from(platformLines).where(filters) : await db.select().from(platformLines));
+  } catch (error) {
+    handleError(res, error, "Failed to fetch lines");
+  }
+});
+
+router.patch("/platform/lines/:id", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const before = await findHierarchyRow(platformLines, req.params.id, tenantId);
+    if (!before) return res.status(404).json({ error: "line not found" });
+    const update = cleanHierarchyUpdate(req.body, ["plantId", "areaId", "name", "code", "lineType", "status"]);
+    const filters = tenantId ? and(eq(platformLines.id, req.params.id), eq(platformLines.tenantId, tenantId)) : eq(platformLines.id, req.params.id);
+    const [updated] = await db.update(platformLines).set(update as any).where(filters).returning();
+    await audit(req, { tenantId, eventType: "line.updated", entityType: "line", entityId: updated.id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    res.json(updated);
+  } catch (error) {
+    handleError(res, error, "Failed to update line");
+  }
+});
+
+router.delete("/platform/lines/:id", async (req, res) => {
+  await deleteHierarchyRow(req, res, {
+    table: platformLines,
+    entityType: "line",
+    eventType: "line.deleted",
+    errorMessage: "Failed to delete line",
+  });
+});
+
 router.post("/platform/work-centers", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
     const [created] = await db.insert(platformWorkCenters).values({ tenantId, ...req.body } as any).returning();
     await audit(req, { tenantId, eventType: "work_center.created", entityType: "work_center", entityId: created.id, action: "create", afterSnapshot: created });
     res.status(201).json(created);
   } catch (error) {
     handleError(res, error, "Failed to create work center");
   }
+});
+
+router.get("/platform/work-centers", async (req, res) => {
+  try {
+    const filters = hierarchyWhere(platformWorkCenters, req);
+    res.json(filters ? await db.select().from(platformWorkCenters).where(filters) : await db.select().from(platformWorkCenters));
+  } catch (error) {
+    handleError(res, error, "Failed to fetch work centers");
+  }
+});
+
+router.patch("/platform/work-centers/:id", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const before = await findHierarchyRow(platformWorkCenters, req.params.id, tenantId);
+    if (!before) return res.status(404).json({ error: "work_center not found" });
+    const update = cleanHierarchyUpdate(req.body, ["plantId", "lineId", "name", "code", "workCenterType", "status"]);
+    const filters = tenantId ? and(eq(platformWorkCenters.id, req.params.id), eq(platformWorkCenters.tenantId, tenantId)) : eq(platformWorkCenters.id, req.params.id);
+    const [updated] = await db.update(platformWorkCenters).set(update as any).where(filters).returning();
+    await audit(req, { tenantId, eventType: "work_center.updated", entityType: "work_center", entityId: updated.id, action: "update", beforeSnapshot: before, afterSnapshot: updated });
+    res.json(updated);
+  } catch (error) {
+    handleError(res, error, "Failed to update work center");
+  }
+});
+
+router.delete("/platform/work-centers/:id", async (req, res) => {
+  await deleteHierarchyRow(req, res, {
+    table: platformWorkCenters,
+    entityType: "work_center",
+    eventType: "work_center.deleted",
+    errorMessage: "Failed to delete work center",
+  });
 });
 
 router.get("/platform/users", async (req, res) => {
@@ -721,6 +915,15 @@ router.get("/platform/permissions", async (_req, res) => {
   }
 });
 
+router.get("/platform/roles/:id/permissions", async (req, res) => {
+  try {
+    const rows = await db.select().from(platformRolePermissions).where(eq(platformRolePermissions.roleId, req.params.id));
+    res.json(rows);
+  } catch (error) {
+    handleError(res, error, "Failed to fetch role permissions");
+  }
+});
+
 router.post("/platform/roles/:id/permissions", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
@@ -734,6 +937,22 @@ router.post("/platform/roles/:id/permissions", async (req, res) => {
     res.status(201).json(created);
   } catch (error) {
     handleError(res, error, "Failed to assign role permissions");
+  }
+});
+
+router.delete("/platform/roles/:id/permissions/:permissionId", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const [deleted] = await db.delete(platformRolePermissions)
+      .where(and(
+        eq(platformRolePermissions.roleId, req.params.id),
+        eq(platformRolePermissions.permissionId, req.params.permissionId)
+      ))
+      .returning();
+    await audit(req, { tenantId, eventType: "role.permission_removed", entityType: "role", entityId: req.params.id, action: "revoke", afterSnapshot: deleted });
+    res.json({ success: true, deleted });
+  } catch (error) {
+    handleError(res, error, "Failed to revoke role permission");
   }
 });
 
@@ -764,6 +983,16 @@ router.get("/platform/audit-events", async (req, res) => {
     res.json(tenantId ? await query.where(eq(platformAuditEvents.tenantId, tenantId)) : await query);
   } catch (error) {
     handleError(res, error, "Failed to fetch audit events");
+  }
+});
+
+router.get("/platform/templates/:industryKey/preview", async (req, res) => {
+  try {
+    const template = industryTemplates[req.params.industryKey];
+    if (!template) return res.status(404).json({ error: "Template not found" });
+    res.json(template);
+  } catch (error) {
+    handleError(res, error, "Failed to fetch template preview");
   }
 });
 

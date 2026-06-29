@@ -21,6 +21,7 @@ import { qualityRouter } from "./domains/execution/quality-routes";
 import { shiftRouter } from "./domains/execution/shift-routes";
 import { platformRouter } from "./domains/platform/routes";
 import { configurationRouter } from "./domains/configuration/routes";
+import { workOrderRouter } from "./domains/mes/work-order-routes";
 import { requireAuth } from "./auth"; // Assuming auth.ts exists and exports this
 import { supabaseAdmin } from './lib/supabaseAdmin';
 
@@ -98,6 +99,9 @@ app.use('/api', platformRouter);
 
 // Configuration Studio: custom fields/workflow state engine
 app.use('/api', configurationRouter);
+
+// MES pilot: configurable work orders
+app.use('/api', workOrderRouter);
 
 
 // Error handling

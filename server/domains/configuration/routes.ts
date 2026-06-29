@@ -385,4 +385,41 @@ router.get("/configuration/workflow-instances/:instanceId/history", async (req, 
   }
 });
 
+router.get("/configuration/workflows/:workflowId/designer", async (req, res) => {
+  try {
+    const [wf] = await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.id, req.params.workflowId));
+    if (!wf) return res.status(404).json({ error: "Workflow not found" });
+    const states = await db.select().from(workflowStates).where(eq(workflowStates.workflowId, req.params.workflowId));
+    const transitions = await db.select().from(workflowTransitions).where(eq(workflowTransitions.workflowId, req.params.workflowId));
+    res.json({ workflow: wf, states, transitions });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch designer configuration");
+  }
+});
+
+router.post("/configuration/workflows/:workflowId/validate", async (req, res) => {
+  try {
+    const states = await db.select().from(workflowStates).where(eq(workflowStates.workflowId, req.params.workflowId));
+    const initial = states.filter(s => s.isInitial);
+    const terminal = states.filter(s => s.isTerminal);
+    const errors = [];
+    if (initial.length !== 1) errors.push("Workflow must have exactly one initial state.");
+    if (terminal.length === 0) errors.push("Workflow must have at least one terminal state.");
+    res.json({ valid: errors.length === 0, errors });
+  } catch (error) {
+    handleError(res, error, "Validation failed");
+  }
+});
+
+router.post("/configuration/workflows/:workflowId/activate", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const [wf] = await db.update(workflowDefinitions).set({ isActive: true } as any).where(eq(workflowDefinitions.id, req.params.workflowId)).returning();
+    await audit(req, { eventType: "workflow.activated", entityType: "workflow", entityId: req.params.workflowId, action: "activate", objectType: wf.objectType, afterSnapshot: wf });
+    res.json({ success: true, workflow: wf });
+  } catch (error) {
+    handleError(res, error, "Failed to activate workflow");
+  }
+});
+
 export const configurationRouter = router;

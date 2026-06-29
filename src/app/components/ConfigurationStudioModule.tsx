@@ -190,6 +190,114 @@ export default function ConfigurationStudioModule() {
           )}
         </div>
       </section>
+
+      {workflows.data.length > 0 && (
+        <WorkflowDesigner workflowId={workflows.data[0].id} />
+      )}
     </div>
+  );
+}
+
+function WorkflowDesigner({ workflowId }: { workflowId: string }) {
+  const [designerData, setDesignerData] = useState<any>(null);
+  const [selectedState, setSelectedState] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch(`/api/configuration/workflows/${workflowId}/designer`)
+      .then(res => res.json())
+      .then(data => {
+        setDesignerData(data);
+        setLoading(false);
+      })
+      .catch(console.error);
+  }, [workflowId]);
+
+  if (loading) return <div className="text-slate-400 text-sm">Loading designer...</div>;
+
+  return (
+    <section className="rounded-lg border border-slate-700 bg-slate-800/70 p-4">
+      <div className="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+        <div>
+          <h2 className="font-semibold text-white">Visual Workflow Designer MVP</h2>
+          <p className="text-xs text-slate-400">Model states and allowed lifecycle transitions for the work order pilot.</p>
+        </div>
+        <Icons.Activity className="h-5 w-5 text-emerald-400" />
+      </div>
+
+      <div className="flex gap-4">
+        {/* States list panel */}
+        <div className="w-1/3 border-r border-slate-700 pr-4 space-y-3">
+          <h3 className="text-xs font-semibold text-slate-400 uppercase">Workflow States</h3>
+          <div className="space-y-2">
+            {designerData?.states?.map((state: any) => (
+              <button
+                key={state.id}
+                onClick={() => setSelectedState(state)}
+                className={`w-full text-left p-3 rounded border transition-colors ${
+                  selectedState?.id === state.id
+                    ? 'border-emerald-500 bg-emerald-950/20 text-white'
+                    : 'border-slate-700 bg-slate-900/30 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm">{state.stateName}</span>
+                  {state.isInitial && <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded">Initial</span>}
+                  {state.isTerminal && <span className="text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded">Terminal</span>}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">{state.stateCode}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Canvas & transitions panel */}
+        <div className="flex-1 space-y-4">
+          <div className="p-4 rounded border border-dashed border-slate-700 bg-slate-900/10 flex flex-col justify-center min-h-[200px]">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-3">Allowed Transitions Graph</h4>
+            <div className="flex flex-wrap gap-3">
+              {designerData?.transitions?.map((trans: any) => {
+                const from = designerData.states.find((s: any) => s.id === trans.fromStateId);
+                const to = designerData.states.find((s: any) => s.id === trans.toStateId);
+                return (
+                  <div key={trans.id} className="px-3 py-2 rounded bg-slate-900 border border-slate-700 text-xs text-slate-200">
+                    <span className="text-emerald-400">{from?.stateName}</span>
+                    <span className="mx-2 text-slate-500">→</span>
+                    <span className="text-purple-400">{to?.stateName}</span>
+                    <div className="text-[10px] text-slate-500 mt-1">{trans.transitionName}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {selectedState && (
+            <div className="p-4 rounded border border-slate-700 bg-slate-900/30 space-y-3">
+              <h4 className="text-sm font-semibold text-white">Edit State: <span className="text-emerald-400">{selectedState.stateName}</span></h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs text-slate-400">State Name</label>
+                  <input
+                    type="text"
+                    value={selectedState.stateName}
+                    onChange={(e) => setSelectedState({ ...selectedState, stateName: e.target.value })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded px-2.5 py-1.5 text-slate-200 mt-1 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">State Code</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={selectedState.stateCode}
+                    className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-500 mt-1 text-sm cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }

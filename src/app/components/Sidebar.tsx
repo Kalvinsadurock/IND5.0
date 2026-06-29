@@ -29,6 +29,7 @@ const menuItems = [
   { id: 'supply', label: 'Supply', icon: Icons.Package },
   { id: 'oee', label: 'OEE Tracker', icon: Icons.TrendingUp },
   { id: 'ict', label: 'ICT', icon: Icons.Cpu },
+  { id: 'sap-integration', label: 'SAP Sync Log', icon: Icons.Cpu },
 ];
 
 //const menuItems = [
@@ -44,7 +45,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const userRole = user?.role?.toLowerCase() || 'operator';
 
   const roleAccessMap: Record<string, string[]> = {
-    admin: ['dashboard', 'platform', 'configuration', 'inventory', 'operations', 'process', 'quality', 'supply', 'oee', 'ict'],
+    admin: ['dashboard', 'platform', 'configuration', 'inventory', 'operations', 'process', 'quality', 'supply', 'oee', 'ict', 'sap-integration'],
     inventory_engineer: ['dashboard', 'inventory', 'oee', 'ict'],
     production_engineer: ['dashboard', 'process', 'quality', 'operations', 'oee', 'ict'],
     production_supervisor: ['dashboard', 'process', 'operations', 'oee', 'ict'],

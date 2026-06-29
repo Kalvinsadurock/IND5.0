@@ -396,6 +396,40 @@ export const workflowHistory = pgTable("workflow_history", {
   index("workflow_history_instance_idx").on(table.workflowInstanceId),
 ]);
 
+export const workOrderStatuses = ["draft", "released", "in_progress", "quality_hold", "completed", "cancelled"] as const;
+export type WorkOrderStatus = typeof workOrderStatuses[number];
+
+export const mesWorkOrders = pgTable("mes_work_orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  workOrderNumber: varchar("work_order_number", { length: 80 }).notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  description: text("description"),
+  productCode: varchar("product_code", { length: 80 }),
+  productName: varchar("product_name", { length: 180 }),
+  plannedQuantity: decimal("planned_quantity", { precision: 14, scale: 3 }).notNull().default("1"),
+  completedQuantity: decimal("completed_quantity", { precision: 14, scale: 3 }).notNull().default("0"),
+  unit: varchar("unit", { length: 24 }).notNull().default("ea"),
+  priority: varchar("priority", { length: 20 }).notNull().default("normal"),
+  status: varchar("status", { length: 30 }).notNull().default("draft"),
+  plannedStartAt: timestamp("planned_start_at"),
+  plannedEndAt: timestamp("planned_end_at"),
+  releasedAt: timestamp("released_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  customFields: jsonb("custom_fields"),
+  createdBy: uuid("created_by").references(() => platformUsers.id),
+  updatedBy: uuid("updated_by").references(() => platformUsers.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("mes_work_orders_tenant_idx").on(table.tenantId),
+  index("mes_work_orders_number_idx").on(table.tenantId, table.workOrderNumber),
+  index("mes_work_orders_status_idx").on(table.tenantId, table.status),
+  index("mes_work_orders_priority_idx").on(table.tenantId, table.priority),
+]);
+
 // KIT INVENTORY (Process-driven, one kit = one row)
 export const kit_inventory = pgTable("kit_inventory", {
   id: serial("id").primaryKey(),

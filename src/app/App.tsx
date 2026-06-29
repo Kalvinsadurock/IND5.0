@@ -21,6 +21,7 @@ const OeeModule = lazy(() => import('./components/oee/OeeModule'));
 const ICTModule = lazy(() => import('./components/ICTModule'));
 const PlatformCoreModule = lazy(() => import('./components/PlatformCoreModule'));
 const ConfigurationStudioModule = lazy(() => import('./components/ConfigurationStudioModule'));
+const SapIntegrationModule = lazy(() => import('./components/SapIntegrationModule'));
 
 // Loading fallback component
 function TabLoadingFallback() {
@@ -122,6 +123,12 @@ export default function App() {
         return (
           <Suspense fallback={<TabLoadingFallback />}>
             <ConfigurationStudioModule />
+          </Suspense>
+        );
+      case 'sap-integration':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <SapIntegrationModule />
           </Suspense>
         );
       default:
