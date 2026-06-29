@@ -67,8 +67,13 @@ export function OperatorPreShift() {
           id: data.id,
           machine_id: selectedMachine.id,
           shift_type: shiftType,
-          status: 'active'
-        });
+          status: 'active',
+          operator_id: user.auth_user_id || String(user.id),
+          start_time: new Date().toISOString(),
+          end_time: null,
+          planned_duration_min: 480,
+          created_at: new Date().toISOString()
+        } as any);
         addToast({
           title: 'Shift Started',
           description: `${selectedMachine.name} — Shift ${shiftType}`,
