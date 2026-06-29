@@ -1,0 +1,164 @@
+CONTEXT:
+React + TypeScript + Vite manufacturing dashboard using shadcn/ui.
+Current app is mould-centric (M1/M2/M3).
+Refactor UI + backend to support 3 manufacturing stages:
+Prefabricated, Moulding, Finishing.
+Keep existing theme, KPI logic, auth, quality & supply logic.
+
+=====================================================
+1. DATABASE & SCHEMA (shared/schema.ts)
+=====================================================
+- Add to processes table:
+  category: text("category").notNull() // prefabricated | moulding | finishing
+
+- Ensure operation_runs has:
+  mouldId: integer("mould_id").nullable()
+  state: text("state") // active | waiting | hold | completed
+
+- Update server/seed.ts:
+  Seed all processes with category mapping:
+    Prefabricated: first 20
+    Moulding: 210–250
+    Finishing: 260–350
+
+=====================================================
+2. BACKEND API (server/index.ts)
+=====================================================
+Add endpoints:
+
+GET /api/processes?category=prefabricated|moulding|finishing
+GET /api/processes/:id/summary
+GET /api/processes/:id/parts
+GET /api/parts/active
+
+Process summary response format:
+{
+  processId,
+  name,
+  category,
+  inProgress,
+  hold,
+  completed,
+  activeMoulds: ["M1","M2"]
+}
+
+Aggregate from operation_runs.
+Cache summaries for 10 seconds.
+Lazy-load parts on demand.
+
+=====================================================
+3. KPI BACKEND (NEW)
+=====================================================
+Add endpoint:
+GET /api/kpis?month=overall|YYYY-MM
+
+Compute using Postgres:
+- Total Target (sets + blades)
+- Set Progress (3 blades = 1 set)
+- Daily Run Rate (blades/day)
+- Yield Rate (%)
+- Month vs previous month delta + trend (UP | DOWN | SAME)
+
+Cache KPI response for 30 seconds.
+
+Also add:
+GET /api/kpis/prefabricated
+GET /api/kpis/moulding
+GET /api/kpis/finishing
+
+=====================================================
+4. DASHBOARD UI RESTRUCTURE
+=====================================================
+- REMOVE M1/M2/M3 mould cards.
+- REMOVE large KPI cards from center dashboard.
+
+Create ProcessCategoryCard.tsx:
+Props: title, category, processCount
+Shows:
+- InProgress / Hold / Completed counts
+- Compact stacked bar / progress strip
+- Click opens modal
+
+Add 3 cards:
+Prefabricated | Moulding | Finishing
+
+=====================================================
+5. PROCESS MODAL (NEW)
+=====================================================
+Create ProcessOverviewDialog.tsx:
+- Grid of process tiles (ID + name)
+- Each tile shows InProgress / Hold / Completed
+- Click navigates to:
+/process?processId=XXX
+
+=====================================================
+6. OPERATIONS PAGE (CRITICAL)
+=====================================================
+Refactor OperationsTab.tsx:
+❌ Remove mould-based table
+✅ Blade-level rows:
+- Part Number
+- Current Process
+- Category
+- Assigned Mould (if any)
+- Status
+- Elapsed vs Target
+- Action: View Process
+
+Filters:
+- Category
+- Status
+- Mould
+
+=====================================================
+7. PROCESS PAGE RESTRUCTURE
+=====================================================
+Refactor ProcessTab.tsx:
+- Left sidebar grouped list:
+  Prefabricated / Moulding / Finishing
+- Top summary:
+  Prefab ready | Moulding active | Finishing completed
+- Main panel:
+  Parts in selected process
+  Show mould mapping for moulding processes
+
+=====================================================
+8. LEFT SIDEBAR NAVIGATION
+=====================================================
+Replace tabs with persistent sidebar:
+Menu:
+- Dashboard
+- Operations
+- Process
+- Quality
+- Supply
+
+Each loads its page component.
+
+=====================================================
+9. KPI SIDEBAR PANEL (NEW)
+=====================================================
+Create KpiInsightPanel.tsx:
+- Mount at bottom of left sidebar
+- Collapsible panel: "Production KPIs"
+- Month dropdown:
+  Overall + dynamic months from data
+- Compact rows (no cards):
+  Total Target
+  Set Progress (%)
+  Daily Run Rate
+  Yield Rate
+- Show trend arrows ↑ ↓ → with tooltip (+X vs last month)
+
+Behavior:
+- On month change, refetch /api/kpis
+- Do NOT reload center dashboard
+- Tablet-friendly (no hover dependency)
+
+=====================================================
+RULES
+=====================================================
+- Keep existing theme, tokens, KPI logic meaning
+- Do NOT modify login, safety alerts, quality/supply logic
+- Dashboard remains clean (no tables)
+- Large click targets for tablet usage

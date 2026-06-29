@@ -1,0 +1,1 @@
+{"processId":4,"processName":"Spar Boom - SF","processCategory":"prefabricated","materials":[{"type":"material_kit","label":"Material Kit","required":1,"available":3,"unit":"kit"},{"type":"glass_kit","label":"Glass Kit","required":1,"available":3,"unit":"kit"}],"executionVerdict":{"canStart":true,"blockers":[],"readyMessage":"Process is ready to start"}}

@@ -1,0 +1,202 @@
+Context
+This is a React + TypeScript + Vite manufacturing dashboard using shadcn/ui and Postgres. The current app is partially implemented and already has Dashboard, Operations, Process, Quality, and Supply pages.
+DO NOT rewrite the app. Modify incrementally and reuse existing components, styles, and routing.
+
+🔹 1. DASHBOARD — FIX STRUCTURE & CONTENT
+Replace current 3 dialogs with 3 clear stage dialogs
+Dialog 1: Prefabricated (20 Processes)
+
+Show one compact dialog card, not 20 cards
+
+Inside the card show:
+
+Total processes: 20
+
+Parts:
+
+In Progress
+
+Hold
+
+Completed
+
+Add stacked horizontal bar (In-progress / Hold / Done)
+
+Clicking the card opens a full-screen modal listing all 20 prefabricated processes as big clickable tiles (NOT dropdown)
+
+Dialog 2: Moulding (5 Processes)
+
+Show moulding summary in one dialog
+
+Include:
+
+Shell SF
+
+Shell PF
+
+Web Assembly
+
+Web & Reinforcement Bonding
+
+Shell Bonding
+
+Show bar graph by mould (M1, M2, M3… dynamic)
+
+Bars represent number of blades in each mould
+
+No individual mould cards on dashboard
+
+Dialog 3: Finishing (10 Processes)
+
+Same structure as Prefabricated
+
+One dialog → click → full process grid
+
+Show maturity counts only (In progress / Hold / Done)
+
+🔹 2. DASHBOARD — ADD IMPORTANT TRENDS
+
+Fill empty dashboard space with visual trends only:
+
+Blade throughput (last 7 days – line chart)
+
+Hold vs Active trend (area or stacked bar)
+
+Yield trend (last 3 months)
+
+NO tables on dashboard.
+
+🔹 3. OPERATIONS — MAJOR FIX (CRITICAL)
+❌ REMOVE mould-centric logic
+✅ OPERATIONS MUST BE BLADE-LEVEL
+Keep mould swimlanes visually, but:
+
+Each card represents ONE BLADE / PART
+
+Swimlane = mould assignment (or “Unassigned”)
+
+Each blade card shows:
+
+Blade / Part Number
+
+Current Process Name
+
+Category (Prefab / Moulding / Finishing)
+
+Status (Active / Waiting / Hold / Blocked)
+
+Elapsed vs Target time
+
+Reason if Waiting / Blocked
+
+Action: View Process
+
+Filters:
+
+Category
+
+Process
+
+Status
+
+Mould
+
+🔹 4. PROCESS PAGE — BLUE-COLLAR FRIENDLY
+❌ NO dropdown for processes
+✅ LEFT SUB-MENU with ALL 35 PROCESSES
+
+Sidebar grouping:
+
+Prefabricated (20)
+
+Moulding (5)
+
+Finishing (10)
+
+Each process page shows:
+
+Availability Check (MANDATORY before start)
+
+Skip check for Process 1 (Incoming)
+
+For all others:
+
+Raw material / sub-part availability
+
+Show Pie chart:
+
+Available
+
+Missing
+
+QA Hold
+
+Current blades in this process
+
+Status summary (In progress / Hold / Done)
+
+Block “Start Process” if required parts are unavailable.
+
+🔹 5. MOULDING PROCESS MAPPING (IMPORTANT)
+
+Map moulding correctly:
+
+Moulding processes belong to Process category = moulding
+
+A blade enters moulding → assigned to mould → appears in mould swimlane
+
+Same blade continues through finishing after moulding
+
+Mould is a resource, NOT the owner of the operation.
+
+🔹 6. KPI PANEL — KEEP IN SIDEBAR (DO NOT TOUCH CENTER)
+
+Keep Production KPIs in left sidebar only
+
+Compact rows (no cards)
+
+Month selector:
+
+Overall
+
+Monthly (YYYY-MM)
+
+Add trend arrows ↑ ↓ →
+
+Tooltip: “+X vs last month”
+
+🔹 7. DATA & LOGIC RULES
+
+Processes must load by category
+
+Operations are blade-driven
+
+Mould is nullable
+
+Cache summaries (10–30s)
+
+Lazy load process details
+
+Tablet friendly (large click targets)
+
+🔹 8. DO NOT CHANGE
+
+Login flow
+
+Theme & colors
+
+shadcn/ui usage
+
+Existing API naming unless required
+
+🎯 GOAL
+
+After changes:
+
+Dashboard = stage overview + trends
+
+Operations = live blade control
+
+Process = simple step-wise execution
+
+UI usable by shop-floor operators without training

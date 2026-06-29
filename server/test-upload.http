@@ -1,0 +1,21 @@
+### Upload kit photo (server-side proxy)
+@TOKEN = eeyJhbGciOiJFUzI1NiIsImtpZCI6ImU2MWJhMDFkLWUzY2MtNGUzZi04OWQ3LTc4NzdhNzZkNDVhNSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2pjem5kbnN4enJ4cmN5ZHdtcGxyLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI4NzI2NGQ0OS1mYWYyLTQxOTItODhhZS1jYWIyMmM2MmVjM2MiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzY4NDc2Nzk4LCJpYXQiOjE3Njg0NzMxOTgsImVtYWlsIjoic2FkdXJvY2sua0BnbWFpbC5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsX3ZlcmlmaWVkIjp0cnVlfSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc2ODQ3MzE5OH1dLCJzZXNzaW9uX2lkIjoiYzhlNjk5YmMtMzAzNi00YmJiLWJjZGMtNmQ3NDY2YjFkNmJkIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.mvMIEaQWyHzxlL_rnJiqbBwaSnOlXYZVnwSiG8Kp23SCQf4kPCbUFtg0dE9WYZBaI9YBY_bgM3qUGEFki9cHoA
+
+POST http://localhost:8001/api/uploads/kit-photo
+Authorization: Bearer {{TOKEN}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="test.txt"
+Content-Type: text/plain
+
+hello from vscode
+--boundary
+Content-Disposition: form-data; name="processId"
+
+40
+--boundary
+Content-Disposition: form-data; name="stepId"
+
+3
+--boundary--

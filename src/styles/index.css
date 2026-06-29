@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* Ensure basic layout reset so the UI doesn't overlap */
+@layer base {
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #f9fafb; /* Light gray background */
+  }
+}

@@ -1,0 +1,52 @@
+Context
+This is a React + TypeScript + Vite manufacturing dashboard using shadcn/ui and Tailwind CSS.
+I already have a working Dashboard with a Moulding Overview Dialog (MouldingOverviewDialog.tsx).
+Do not modify any other dialogs, routes, pages, state logic, or backend APIs.
+Task
+Update only the Moulding Overview Dialog UI and its local data rendering with the following requirements.
+1️⃣ Moulding Dialog Content Structure
+When the user clicks the Moulding card on the dashboard:
+Show M1, M2, and M3 information
+For both faces:
+Suction Face
+Pressure Face
+Each face must be displayed as a separate section inside the dialog.
+2️⃣ Data to Display for Each Mould (M1 / M2 / M3)
+For each mould under both faces, show:
+Current step name (example: Gel Coat Application, Fabric Layup, Curing, etc.)
+Elapsed Time
+Target Time
+Visual progress indicator (progress bar or clear text comparison)
+Crew information:
+Show only 2 main crew members
+Display as text (no editing required)
+3️⃣ Process Steps Reference
+The moulding steps must align conceptually with the Mould Shell Creation process from the Excel sheet, such as:
+Mould opening & shell cleaning
+Gel coat application & curing
+Layer placement & lamination
+Vacuum application & infusion
+Curing & inspection
+These steps should be display-only (no checklist logic, no state mutation).
+4️⃣ UI & Layout Fixes (Critical)
+Fix existing text overflow / overlapping issues inside the Moulding dialog:
+Ensure no text spills outside cards
+Long step names must wrap or truncate cleanly
+Use Tailwind utilities where needed:
+whitespace-normal
+truncate
+overflow-y-auto
+max-h-[70vh] for scrollable dialog content
+5️⃣ Strict Constraints
+❌ Do NOT modify:
+Other dialogs (Prefabricated, Finishing, Inventory, etc.)
+Dashboard cards
+Backend, APIs, or database schema
+Global styles or shared components
+✅ Changes must be fully contained within MouldingOverviewDialog.tsx
+✅ Reuse existing design system, colors, and shadcn components
+Expected Output
+Updated MouldingOverviewDialog.tsx
+Clean, readable layout
+No regressions in other parts of the application
+ 
