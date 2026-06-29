@@ -422,4 +422,16 @@ router.post("/configuration/workflows/:workflowId/activate", async (req, res) =>
   }
 });
 
+router.get("/workflow/state/:stateId/can-delete", async (req, res) => {
+  try {
+    const activeInstances = await db.select().from(workflowInstances).where(eq(workflowInstances.currentStateId, req.params.stateId));
+    if (activeInstances.length > 0) {
+      return res.json({ canDelete: false, reason: `Active work order instances exist in this state.` });
+    }
+    res.json({ canDelete: true });
+  } catch (error) {
+    handleError(res, error, "Failed to check state deletion safety");
+  }
+});
+
 export const configurationRouter = router;
