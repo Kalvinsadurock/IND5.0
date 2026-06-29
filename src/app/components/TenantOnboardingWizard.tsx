@@ -71,6 +71,7 @@ export function TenantOnboardingWizard({ onCompleted }: { onCompleted?: () => vo
   const [result, setResult] = useState<OnboardingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState<any>(null);
 
   const selectedIndustry = useMemo(
     () => industryOptions.find((option) => option.value === form.industryType)?.label || 'Industry template',
@@ -79,7 +80,21 @@ export function TenantOnboardingWizard({ onCompleted }: { onCompleted?: () => vo
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+    if (key === 'industryType') {
+      fetch(`/api/platform/templates/${value}/preview`)
+        .then(res => res.json())
+        .then(data => setPreview(data))
+        .catch(console.error);
+    }
   };
+
+  // Initial fetch for discrete preview
+  useState(() => {
+    fetch(`/api/platform/templates/discrete_manufacturing/preview`)
+      .then(res => res.json())
+      .then(data => setPreview(data))
+      .catch(console.error);
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -141,6 +156,21 @@ export function TenantOnboardingWizard({ onCompleted }: { onCompleted?: () => vo
 
           <Field label="Admin Name" value={form.adminName} onChange={(value) => update('adminName', value)} />
           <Field label="Admin Email" value={form.adminEmail} onChange={(value) => update('adminEmail', value)} type="email" />
+
+          {/* Read-only Live Preview Panel */}
+          {preview && (
+            <div className="md:col-span-2 p-3 bg-slate-900/60 rounded border border-slate-700 space-y-2">
+              <div className="text-xs font-semibold text-slate-300 uppercase">Live Template Preview: {preview.label}</div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-slate-500">Plant Area:</span> <span className="text-white">{preview.plantArea}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Work Centers:</span> <span className="text-white">{preview.workCenters?.join(', ')}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">
