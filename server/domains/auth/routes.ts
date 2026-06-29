@@ -141,20 +141,193 @@ router.get('/me', async (req, res) => {
     }
 });
 
-router.post('/invite/verify', async (req, res) => {
-    const { token } = req.body;
-    if (!token) return res.status(400).json({ error: 'Token required' });
-    // Simulate active pilot invite check
-    if (token === 'expired-token-99') {
-        return res.status(400).json({ error: 'Invite token is expired' });
+import { platformPendingInvites, platformUsers, platformTenants, platformRoles, platformUserRoleAssignments } from '../../../shared/schema';
+import { and, eq } from 'drizzle-orm';
+import { createAuthUser } from '../../auth';
+
+router.get('/validate-invite', async (req, res) => {
+    try {
+        const token = req.query.token as string;
+        if (!token) return res.status(400).json({ error: 'Token required' });
+
+        const [invite] = await db.select().from(platformPendingInvites).where(
+            and(
+                eq(platformPendingInvites.tokenHash, token),
+                eq(platformPendingInvites.usedAt, null as any)
+            )
+        );
+
+        if (!invite) {
+            return res.status(400).json({ error: 'Invite token is invalid or has already been used' });
+        }
+
+        if (new Date() > new Date(invite.expiresAt)) {
+            return res.status(400).json({ error: 'Invite token is expired' });
+        }
+
+        const [tenant] = await db.select().from(platformTenants).where(eq(platformTenants.id, invite.tenantId));
+
+        return res.json({
+            valid: true,
+            email: invite.email,
+            tenantId: invite.tenantId,
+            tenantName: tenant ? tenant.name : 'Unknown Tenant'
+        });
+    } catch (error) {
+        console.error('Validate invite error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
-    return res.json({ valid: true, email: 'admin@pilot-factory.com', tenantId: 'test-tenant-id' });
+});
+
+router.post('/invite/verify', async (req, res) => {
+    try {
+        const token = req.body.token;
+        if (!token) return res.status(400).json({ error: 'Token required' });
+
+        const [invite] = await db.select().from(platformPendingInvites).where(
+            and(
+                eq(platformPendingInvites.tokenHash, token),
+                eq(platformPendingInvites.usedAt, null as any)
+            )
+        );
+
+        if (!invite) return res.status(400).json({ error: 'Invite token is invalid' });
+        if (new Date() > new Date(invite.expiresAt)) return res.status(400).json({ error: 'Invite token is expired' });
+
+        const [tenant] = await db.select().from(platformTenants).where(eq(platformTenants.id, invite.tenantId));
+        return res.json({
+            valid: true,
+            email: invite.email,
+            tenantId: invite.tenantId,
+            tenantName: tenant ? tenant.name : 'Unknown Tenant'
+        });
+    } catch (error) {
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+router.post('/accept-invite', async (req, res) => {
+    try {
+        const { token, password } = req.body;
+        if (!token || !password) {
+            return res.status(400).json({ error: 'Token and password required' });
+        }
+
+        const [invite] = await db.select().from(platformPendingInvites).where(
+            and(
+                eq(platformPendingInvites.tokenHash, token),
+                eq(platformPendingInvites.usedAt, null as any)
+            )
+        );
+
+        if (!invite) {
+            return res.status(400).json({ error: 'Invite token is invalid or has already been used' });
+        }
+
+        if (new Date() > new Date(invite.expiresAt)) {
+            return res.status(400).json({ error: 'Invite token is expired' });
+        }
+
+        // Update invite as used
+        await db.update(platformPendingInvites).set({
+            usedAt: new Date()
+        } as any).where(eq(platformPendingInvites.id, invite.id));
+
+        // Activate user status in platform_users
+        const [existingUser] = await db.select().from(platformUsers).where(
+            and(
+                eq(platformUsers.tenantId, invite.tenantId),
+                eq(platformUsers.email, invite.email)
+            )
+        );
+
+        let userRecord = existingUser;
+        if (existingUser) {
+            await db.update(platformUsers).set({
+                status: 'active',
+                updatedAt: new Date()
+            } as any).where(eq(platformUsers.id, existingUser.id));
+        } else {
+            [userRecord] = await db.insert(platformUsers).values({
+                tenantId: invite.tenantId,
+                email: invite.email,
+                displayName: invite.email.split('@')[0],
+                userType: 'internal',
+                status: 'active'
+            } as any).returning();
+        }
+
+        // Add to auth
+        let authUserId = `demo-${invite.email}`;
+        try {
+            const authUser = await createAuthUser(invite.email, password, { tenantId: invite.tenantId });
+            authUserId = authUser.id;
+        } catch (e) {
+            // Fallback for demo mode
+        }
+
+        // Check if employee exists, if not create one
+        const [existingEmp] = await db.select().from(employees).where(eq(employees.email, invite.email));
+        if (!existingEmp) {
+            await db.insert(employees).values({
+                tenantId: invite.tenantId,
+                employeeCode: invite.email.split('@')[0].toUpperCase(),
+                name: invite.email.split('@')[0],
+                email: invite.email,
+                role: 'admin',
+                department: 'Administration',
+                auth_user_id: authUserId
+            } as any);
+        } else {
+            await db.update(employees).set({
+                auth_user_id: authUserId
+            } as any).where(eq(employees.id, existingEmp.id));
+        }
+
+        // Generate fake JWT token
+        const fakeToken = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${btoa(JSON.stringify({ email: invite.email, iat: Date.now() }))}.fake`;
+
+        return res.json({
+            success: true,
+            access_token: fakeToken,
+            user: {
+                id: userRecord ? userRecord.id : authUserId,
+                employeeId: invite.email.split('@')[0].toUpperCase(),
+                employeeName: invite.email.split('@')[0],
+                email: invite.email,
+                role: 'admin',
+                department: 'Administration',
+                auth_user_id: authUserId
+            }
+        });
+    } catch (error) {
+        console.error('Accept invite error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 router.post('/invite/accept', async (req, res) => {
-    const { token, password } = req.body;
-    if (!token || !password) return res.status(400).json({ error: 'Token and password required' });
-    return res.json({ success: true, message: 'Admin account successfully activated.' });
+    try {
+        const { token, password } = req.body;
+        if (!token || !password) return res.status(400).json({ error: 'Token and password required' });
+
+        const [invite] = await db.select().from(platformPendingInvites).where(
+            and(
+                eq(platformPendingInvites.tokenHash, token),
+                eq(platformPendingInvites.usedAt, null as any)
+            )
+        );
+
+        if (!invite) return res.status(400).json({ error: 'Invite token is invalid' });
+
+        await db.update(platformPendingInvites).set({
+            usedAt: new Date()
+        } as any).where(eq(platformPendingInvites.id, invite.id));
+
+        return res.json({ success: true, message: 'Admin account successfully activated.' });
+    } catch (error) {
+        return res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 export const authRouter = router;

@@ -504,8 +504,51 @@ router.post("/platform/onboarding/bootstrap", async (req, res) => {
       workflow,
       industryTemplate: template.label,
     });
+});
+
+router.get("/platform/tenant/readiness", async (req, res) => {
+  try {
+    const tenantId = tenantIdFrom(req);
+    if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
+
+    // 1. Hierarchy Check
+    const plants = await db.select().from(platformPlants).where(eq(platformPlants.tenantId, tenantId));
+    const lines = await db.select().from(platformLines).where(eq(platformLines.tenantId, tenantId));
+    const workCenters = await db.select().from(platformWorkCenters).where(eq(platformWorkCenters.tenantId, tenantId));
+    const hierarchyCompleted = plants.length > 0 && lines.length > 0 && workCenters.length > 0;
+
+    // 2. Roles/Users Assignment Check
+    const users = await db.select().from(platformUsers).where(and(eq(platformUsers.tenantId, tenantId), eq(platformUsers.status, "active")));
+    const rolesCompleted = users.length > 0;
+
+    // 3. Workflow Configuration Check
+    const workflows = await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.tenantId, tenantId));
+    const workflowCompleted = workflows.length > 0;
+
+    // 4. Work Order Released Check
+    const { mesWorkOrders } = await import("../../../shared/schema");
+    const workOrders = await db.select().from(mesWorkOrders).where(
+      and(
+        eq(mesWorkOrders.tenantId, tenantId),
+        eq(mesWorkOrders.status, "released")
+      )
+    );
+    const workOrderCompleted = workOrders.length > 0;
+
+    // 5. OEE shift run logged check
+    const { oeeShiftRuns } = await import("../../../shared/schema");
+    const shiftRuns = await db.select().from(oeeShiftRuns).where(eq(oeeShiftRuns.tenantId, tenantId));
+    const oeeCompleted = shiftRuns.length > 0;
+
+    res.json([
+      { item: "Factory Hierarchy Configured", completed: hierarchyCompleted, link: "/platform" },
+      { item: "Roles & Team Assigned", completed: rolesCompleted, link: "/platform" },
+      { item: "Workflows Defined", completed: workflowCompleted, link: "/configuration" },
+      { item: "Released Work Orders Available", completed: workOrderCompleted, link: "/operations" },
+      { item: "OEE Tracking Active", completed: oeeCompleted, link: "/oee" }
+    ]);
   } catch (error) {
-    handleError(res, error, "Failed to bootstrap tenant onboarding");
+    handleError(res, error, "Failed to fetch tenant readiness status");
   }
 });
 

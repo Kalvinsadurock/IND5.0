@@ -83,6 +83,8 @@ router.get("/mes/work-orders", async (req, res) => {
   }
 });
 
+import { validateCustomFields } from "../../lib/validation";
+
 router.post("/mes/work-orders", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
@@ -92,10 +94,15 @@ router.post("/mes/work-orders", async (req, res) => {
 
     // Server-side custom fields validation based on dynamic config schema
     if (req.body.customFields) {
-      for (const [key, value] of Object.entries(req.body.customFields)) {
-        if (key === 'batchNumber' && !value) {
-          return res.status(400).json({ error: "Custom field 'batchNumber' is required for this industry template." });
-        }
+      const validationResult = await validateCustomFields(tenantId, "work_order", req.body.customFields);
+      if (!validationResult.valid) {
+        await audit(req, {
+          tenantId,
+          eventType: "work_order.validation_failed",
+          action: "validation",
+          metadata: { errors: validationResult.errors, customFields: req.body.customFields }
+        });
+        return res.status(400).json({ error: "Validation failed", errors: validationResult.errors });
       }
     }
 
@@ -141,6 +148,21 @@ router.patch("/mes/work-orders/:id", async (req, res) => {
 
     const [before] = await db.select().from(mesWorkOrders).where(and(eq(mesWorkOrders.id, req.params.id), eq(mesWorkOrders.tenantId, tenantId)));
     if (!before) return res.status(404).json({ error: "Work order not found" });
+
+    if (req.body.customFields) {
+      const mergedFields = { ...(before.customFields || {}), ...req.body.customFields };
+      const validationResult = await validateCustomFields(tenantId, "work_order", mergedFields);
+      if (!validationResult.valid) {
+        await audit(req, {
+          tenantId,
+          eventType: "work_order.validation_failed",
+          entityId: before.id,
+          action: "validation",
+          metadata: { errors: validationResult.errors, customFields: mergedFields }
+        });
+        return res.status(400).json({ error: "Validation failed", errors: validationResult.errors });
+      }
+    }
 
     const updates: Record<string, unknown> = { updatedAt: new Date(), updatedBy: actorUserIdFrom(req) };
     for (const field of ["workOrderNumber", "title", "description", "productCode", "productName", "plannedQuantity", "completedQuantity", "unit", "priority", "customFields"] as const) {

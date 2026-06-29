@@ -145,6 +145,20 @@ export const platformUsers = pgTable("platform_users", {
   index("platform_users_status_idx").on(table.status),
 ]);
 
+export const platformPendingInvites = pgTable("platform_pending_invites", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  email: varchar("email", { length: 180 }).notNull(),
+  roleId: uuid("role_id").references(() => platformRoles.id),
+  tokenHash: varchar("token_hash", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("platform_pending_invites_tenant_idx").on(table.tenantId),
+  index("platform_pending_invites_token_idx").on(table.tokenHash),
+]);
+
 export const platformRoles = pgTable("platform_roles", {
   id: uuid("id").defaultRandom().primaryKey(),
   tenantId: uuid("tenant_id").references(() => platformTenants.id),
