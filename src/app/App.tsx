@@ -23,6 +23,7 @@ const PlatformCoreModule = lazy(() => import('./components/PlatformCoreModule'))
 const ConfigurationStudioModule = lazy(() => import('./components/ConfigurationStudioModule'));
 const SapIntegrationModule = lazy(() => import('./components/SapIntegrationModule'));
 const WorkforceManager = lazy(() => import('./components/WorkforceManager'));
+const PilotReadinessChecklist = lazy(() => import('./components/PilotReadinessChecklist'));
 
 // Loading fallback component
 function TabLoadingFallback() {
@@ -136,6 +137,12 @@ export default function App() {
         return (
           <Suspense fallback={<TabLoadingFallback />}>
             <WorkforceManager />
+          </Suspense>
+        );
+      case 'checklist':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <PilotReadinessChecklist />
           </Suspense>
         );
       default:

@@ -31,6 +31,7 @@ const menuItems = [
   { id: 'ict', label: 'ICT', icon: Icons.Cpu },
   { id: 'sap-integration', label: 'SAP Sync Log', icon: Icons.Cpu },
   { id: 'hrms', label: 'Workforce (HRMS)', icon: Icons.User },
+  { id: 'checklist', label: 'Pilot Checklist', icon: Icons.ClipboardCheck },
 ];
 
 //const menuItems = [
@@ -46,7 +47,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const userRole = user?.role?.toLowerCase() || 'operator';
 
   const roleAccessMap: Record<string, string[]> = {
-    admin: ['dashboard', 'platform', 'configuration', 'inventory', 'operations', 'process', 'quality', 'supply', 'oee', 'ict', 'sap-integration', 'hrms'],
+    admin: ['dashboard', 'platform', 'configuration', 'inventory', 'operations', 'process', 'quality', 'supply', 'oee', 'ict', 'sap-integration', 'hrms', 'checklist'],
     inventory_engineer: ['dashboard', 'inventory', 'oee', 'ict'],
     production_engineer: ['dashboard', 'process', 'quality', 'operations', 'oee', 'ict'],
     production_supervisor: ['dashboard', 'process', 'operations', 'oee', 'ict'],
