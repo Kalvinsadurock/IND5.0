@@ -48,21 +48,29 @@ export function OperatorPreShift() {
     if (!selectedMachine || !user) return
 
     setLoading(true)
+    const activeTenantId = user.tenantId || 'test-tenant-id';
 
     try {
       const res = await fetch('/api/oee/shift/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-tenant-id': 'test-tenant-id'
+          'x-tenant-id': activeTenantId
         },
         body: JSON.stringify({
           workCenterId: selectedMachine.id,
-          plannedRuntimeMinutes: 480
+          plannedRuntimeMinutes: 480,
+          shiftType: shiftType
         })
       });
       const data = await res.json();
-      if (data && !data.error) {
+      if (!res.ok || data.error) {
+        addToast({
+          title: 'Shift Start Failed',
+          description: data.error || 'Server rejected the request.',
+          variant: 'destructive'
+        });
+      } else {
         startShift({
           id: data.id,
           machine_id: selectedMachine.id,
@@ -80,8 +88,13 @@ export function OperatorPreShift() {
           variant: 'success',
         });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      addToast({
+        title: 'Network Error',
+        description: e.message || 'Could not connect to OEE servers.',
+        variant: 'destructive'
+      });
     }
     setLoading(false)
   }
