@@ -24,6 +24,7 @@ const ConfigurationStudioModule = lazy(() => import('./components/ConfigurationS
 const SapIntegrationModule = lazy(() => import('./components/SapIntegrationModule'));
 const WorkforceManager = lazy(() => import('./components/WorkforceManager'));
 const PilotReadinessChecklist = lazy(() => import('./components/PilotReadinessChecklist'));
+const InviteAcceptance = lazy(() => import('./components/InviteAcceptance'));
 
 // Loading fallback component
 function TabLoadingFallback() {
@@ -40,6 +41,15 @@ export default function App() {
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [selectedProcessId, setSelectedProcessId] = useState<number | null>(null);
   const [selectedPartId, setSelectedPartId] = useState<number | null>(null);
+
+  // Intercept /accept-invite route BEFORE login gate
+  if (window.location.pathname === '/accept-invite') {
+    return (
+      <Suspense fallback={<TabLoadingFallback />}>
+        <InviteAcceptance />
+      </Suspense>
+    );
+  }
 
   if (isLoading) {
     return (

@@ -542,6 +542,7 @@ router.get("/platform/tenant/readiness", async (req, res) => {
 
     res.json([
       { item: "Factory Hierarchy Configured", completed: hierarchyCompleted, link: "/platform" },
+      { item: "Admin Account Active", completed: users.some(u => u.status === "active"), link: "/platform" },
       { item: "Roles & Team Assigned", completed: rolesCompleted, link: "/platform" },
       { item: "Workflows Defined", completed: workflowCompleted, link: "/configuration" },
       { item: "Released Work Orders Available", completed: workOrderCompleted, link: "/operations" },
@@ -702,28 +703,60 @@ router.delete("/platform/hierarchy/:type/:id", async (req, res) => {
     const { type, id } = req.params;
 
     if (type === "plant") {
+      // Block: has child areas
       const areas = await db.select().from(platformAreas).where(eq(platformAreas.plantId, id));
-      if (areas.length > 0) return res.status(400).json({ canDelete: false, reason: "Plant contains active areas" });
+      if (areas.length > 0) return res.status(400).json({ blocked: true, reason: `Cannot delete: Plant has ${areas.length} active area(s). Remove or reassign them first.` });
       const [deleted] = await db.delete(platformPlants).where(eq(platformPlants.id, id)).returning();
-      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+      await audit(req, { tenantId, eventType: "HIERARCHY_NODE_DELETED", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted, metadata: { childrenCount: 0 } });
+
     } else if (type === "area") {
-      const lines = await db.select().from(platformLines).where(eq(platformLines.areaId, id));
-      if (lines.length > 0) return res.status(400).json({ canDelete: false, reason: "Area contains active lines" });
+      // Block: has child lines
+      const childLines = await db.select().from(platformLines).where(eq(platformLines.areaId, id));
+      if (childLines.length > 0) return res.status(400).json({ blocked: true, reason: `Cannot delete: Area has ${childLines.length} active line(s). Remove or reassign them first.` });
       const [deleted] = await db.delete(platformAreas).where(eq(platformAreas.id, id)).returning();
-      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+      await audit(req, { tenantId, eventType: "HIERARCHY_NODE_DELETED", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted, metadata: { childrenCount: 0 } });
+
     } else if (type === "line") {
-      const workCenters = await db.select().from(platformWorkCenters).where(eq(platformWorkCenters.lineId, id));
-      if (workCenters.length > 0) return res.status(400).json({ canDelete: false, reason: "Line contains active work centers" });
+      // Block: has child work centers
+      const childWCs = await db.select().from(platformWorkCenters).where(eq(platformWorkCenters.lineId, id));
+      if (childWCs.length > 0) return res.status(400).json({ blocked: true, reason: `Cannot delete: Line has ${childWCs.length} active work center(s). Remove or reassign them first.` });
       const [deleted] = await db.delete(platformLines).where(eq(platformLines.id, id)).returning();
-      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+      await audit(req, { tenantId, eventType: "HIERARCHY_NODE_DELETED", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted, metadata: { childrenCount: 0 } });
+
     } else if (type === "work_center") {
-      const { oeeShiftRuns } = await import("../../../shared/schema");
-      const activeShifts = await db.select().from(oeeShiftRuns).where(eq(oeeShiftRuns.workCenterId, id));
-      if (activeShifts.length > 0) return res.status(400).json({ canDelete: false, reason: "Work Center has active OEE/Shift logging records" });
+      // Block: has active OEE shift runs
+      const { oeeShiftRuns, oeeProductionCounts, mesWorkOrders } = await import("../../../shared/schema");
+      const { inArray } = await import("drizzle-orm");
+
+      const activeShifts = await db.select().from(oeeShiftRuns).where(
+        and(eq(oeeShiftRuns.workCenterId, id), eq(oeeShiftRuns.status, "active"))
+      );
+      if (activeShifts.length > 0) {
+        return res.status(400).json({ blocked: true, reason: `Cannot delete: Work Center has ${activeShifts.length} active OEE shift run(s).` });
+      }
+
+      // Block: has active work orders via production counts
+      const prodCounts = await db.select({ workOrderId: oeeProductionCounts.workOrderId })
+        .from(oeeProductionCounts)
+        .innerJoin(oeeShiftRuns, eq(oeeProductionCounts.shiftRunId, oeeShiftRuns.id))
+        .where(eq(oeeShiftRuns.workCenterId, id));
+      if (prodCounts.length > 0) {
+        const woIds = [...new Set(prodCounts.map(p => p.workOrderId))];
+        const activeWOs = await db.select().from(mesWorkOrders).where(
+          and(
+            inArray(mesWorkOrders.id, woIds),
+            inArray(mesWorkOrders.status, ["released", "in_progress"])
+          )
+        );
+        if (activeWOs.length > 0) {
+          return res.status(400).json({ blocked: true, reason: `Cannot delete: ${activeWOs.length} active work order(s) assigned to this work center.` });
+        }
+      }
+
       const [deleted] = await db.delete(platformWorkCenters).where(eq(platformWorkCenters.id, id)).returning();
-      await audit(req, { tenantId, eventType: "hierarchy.node_deleted", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted });
+      await audit(req, { tenantId, eventType: "HIERARCHY_NODE_DELETED", entityType: type, entityId: id, action: "delete", beforeSnapshot: deleted, metadata: { childrenCount: 0 } });
     } else {
-      return res.status(400).json({ error: "Invalid node type" });
+      return res.status(400).json({ error: "Invalid node type. Use: plant, area, line, or work_center" });
     }
 
     res.json({ success: true });
@@ -755,50 +788,96 @@ router.put("/platform/rbac/matrix", async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
-    const { roleId, permissionId, state } = req.body;
 
-    if (state === false) {
-      // Prevent lockout warning checks
-      const [perm] = await db.select().from(platformPermissions).where(eq(platformPermissions.id, permissionId));
-      if (perm && (perm.code === "platform.tenant.manage" || perm.code === "platform.role.manage")) {
+    // Support both single-toggle and batch modes
+    const grants: Array<{roleId: string, permissionId: string}> = req.body.grants || [];
+    const revokes: Array<{roleId: string, permissionId: string}> = req.body.revokes || [];
+
+    // Single-toggle backward compatibility
+    if (req.body.roleId && req.body.permissionId) {
+      if (req.body.state === false) {
+        revokes.push({ roleId: req.body.roleId, permissionId: req.body.permissionId });
+      } else {
+        grants.push({ roleId: req.body.roleId, permissionId: req.body.permissionId });
+      }
+    }
+
+    // Critical permission codes that require lockout prevention
+    const criticalPermissions = ["platform.tenant.manage", "platform.role.manage"];
+
+    // Lockout prevention: check each revoke against critical permissions
+    for (const revoke of revokes) {
+      const [perm] = await db.select().from(platformPermissions).where(eq(platformPermissions.id, revoke.permissionId));
+      if (perm && criticalPermissions.includes(perm.code)) {
+        // Count how many role-assignments still have this permission (across ALL roles)
         const remaining = await db.select().from(platformRolePermissions).where(
           and(
             eq(platformRolePermissions.tenantId, tenantId),
-            eq(platformRolePermissions.permissionId, permissionId)
+            eq(platformRolePermissions.permissionId, revoke.permissionId)
           )
         );
         if (remaining.length <= 1) {
-          return res.status(400).json({ error: "Tenant lockout prevention: At least one Administrator role must retain this platform permission." });
+          return res.status(400).json({
+            error: `Cannot remove the last admin permission (${perm.code}). Tenant would be orphaned with no administrative access.`
+          });
+        }
+
+        // Check if revoking from the only Tenant Admin role
+        const [role] = await db.select().from(platformRoles).where(eq(platformRoles.id, revoke.roleId));
+        if (role && (role.code === "tenant_admin" || role.name === "Tenant Admin")) {
+          return res.status(400).json({
+            error: `Cannot remove ${perm.code} from the Tenant Admin role. At least one admin role must retain administrative permissions.`
+          });
         }
       }
+    }
 
+    let updated = 0;
+
+    // Process revokes
+    for (const revoke of revokes) {
       await db.delete(platformRolePermissions).where(
         and(
           eq(platformRolePermissions.tenantId, tenantId),
-          eq(platformRolePermissions.roleId, roleId),
-          eq(platformRolePermissions.permissionId, permissionId)
+          eq(platformRolePermissions.roleId, revoke.roleId),
+          eq(platformRolePermissions.permissionId, revoke.permissionId)
         )
       );
-    } else {
-      await db.insert(platformRolePermissions).values({
-        tenantId,
-        roleId,
-        permissionId
-      } as any);
+      updated++;
+    }
+
+    // Process grants
+    for (const grant of grants) {
+      // Upsert: check if already exists
+      const existing = await db.select().from(platformRolePermissions).where(
+        and(
+          eq(platformRolePermissions.tenantId, tenantId),
+          eq(platformRolePermissions.roleId, grant.roleId),
+          eq(platformRolePermissions.permissionId, grant.permissionId)
+        )
+      );
+      if (existing.length === 0) {
+        await db.insert(platformRolePermissions).values({
+          tenantId,
+          roleId: grant.roleId,
+          permissionId: grant.permissionId
+        } as any);
+        updated++;
+      }
     }
 
     await audit(req, {
       tenantId,
-      eventType: "rbac.matrix_toggled",
+      eventType: "RBAC_UPDATED",
       entityType: "rbac",
-      entityId: roleId,
-      action: "toggle",
-      metadata: { roleId, permissionId, state }
+      entityId: tenantId,
+      action: "matrix_update",
+      metadata: { grants: grants.length, revokes: revokes.length, totalUpdated: updated }
     });
 
-    res.json({ success: true });
+    res.json({ success: true, updated });
   } catch (error) {
-    handleError(res, error, "Failed to update RBAC matrix cell");
+    handleError(res, error, "Failed to update RBAC matrix");
   }
 });
 

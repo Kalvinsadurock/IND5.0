@@ -70,9 +70,21 @@ export default function PilotReadinessChecklist() {
             <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Configuration Checklist Status</h3>
             <div className="divide-y divide-slate-700">
               {items.map((step, idx) => (
-                <div key={idx} className="flex items-center justify-between py-4">
+                <div
+                  key={idx}
+                  className={`flex items-center justify-between py-4 ${!step.completed ? "cursor-pointer hover:bg-slate-700/30 -mx-2 px-2 rounded-md transition-colors" : ""}`}
+                  onClick={() => {
+                    if (!step.completed && step.link) {
+                      // Dispatch custom navigation event for the parent App to handle
+                      window.dispatchEvent(new CustomEvent("navigate", { detail: { view: step.link.replace("/", "") || "platform" } }));
+                    }
+                  }}
+                >
                   <div>
                     <h4 className="text-sm font-medium text-slate-200">{step.item}</h4>
+                    {!step.completed && step.link && (
+                      <p className="text-xs text-amber-400 mt-0.5">Click to navigate → {step.link}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-4">
                     {step.completed ? (
