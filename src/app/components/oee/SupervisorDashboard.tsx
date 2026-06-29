@@ -75,36 +75,29 @@ export function SupervisorDashboard() {
   }, [profile?.plant_id])
 
   async function fetchDashboardData() {
-    if (!profile?.plant_id) return
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-
-    const { data, error } = await supabase.rpc('get_machine_oee_summary', {
-      p_plant_id: profile.plant_id,
-      p_start_date: today.toISOString(),
-      p_end_date: tomorrow.toISOString(),
-    })
-
-    if (data) {
-      // Check active shifts for status
-      const { data: activeShifts } = await supabase
-        .from('shifts')
-        .select('machine_id')
-        .eq('status', 'active')
-
-      const activeIds = new Set(activeShifts?.map((s) => s.machine_id) || [])
-
-      const enriched = data.map((m: MachineOEEData) => ({
-        ...m,
-        status: activeIds.has(m.machine_id) ? 'running' : 'idle' as const,
-      }))
-
-      setMachines(enriched)
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/oee/dashboard?tenantId=test-tenant-id`);
+      const metrics = await res.json();
+      if (metrics && !metrics.error) {
+        setMachines([
+          {
+            machine_id: 'wc-1',
+            machine_name: 'Work Center 1',
+            avg_oee: metrics.oee,
+            avg_availability: metrics.availability,
+            avg_performance: metrics.performance,
+            avg_quality: metrics.quality,
+            total_downtime_min: 0,
+            shift_count: 1,
+            status: 'running'
+          }
+        ]);
+      }
+    } catch (e) {
+      console.error(e);
     }
-    setLoading(false)
+    setLoading(false);
   }
 
   if (selectedMachineId) {
