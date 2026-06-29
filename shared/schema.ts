@@ -481,6 +481,36 @@ export const hrmsShiftAssignments = pgTable("hrms_shift_assignments", {
   status: varchar("status", { length: 40 }).notNull().default("assigned"),
 });
 
+export const oeeShiftRuns = pgTable("oee_shift_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  workCenterId: uuid("work_center_id").references(() => platformWorkCenters.id).notNull(),
+  shiftDate: timestamp("shift_date").notNull(),
+  plannedRuntimeMinutes: integer("planned_runtime_minutes").notNull().default(480),
+  actualRuntimeMinutes: integer("actual_runtime_minutes").notNull().default(0),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+});
+
+export const oeeDowntimeEvents = pgTable("oee_downtime_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  shiftRunId: uuid("shift_run_id").references(() => oeeShiftRuns.id).notNull(),
+  downtimeReason: varchar("downtime_reason", { length: 180 }).notNull(),
+  durationMinutes: integer("duration_minutes").notNull().default(0),
+  loggedAt: timestamp("logged_at").defaultNow().notNull(),
+});
+
+export const oeeProductionCounts = pgTable("oee_production_counts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").references(() => platformTenants.id).notNull(),
+  shiftRunId: uuid("shift_run_id").references(() => oeeShiftRuns.id).notNull(),
+  goodCount: integer("good_count").notNull().default(0),
+  rejectCount: integer("reject_count").notNull().default(0),
+  loggedAt: timestamp("logged_at").defaultNow().notNull(),
+});
+
 // KIT INVENTORY (Process-driven, one kit = one row)
 export const kit_inventory = pgTable("kit_inventory", {
   id: serial("id").primaryKey(),
