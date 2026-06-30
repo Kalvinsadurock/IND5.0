@@ -25,7 +25,12 @@ async function api(path: string, options: {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : null;
+  let payload = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`${options.method || "GET"} ${path} returned non-JSON response ${response.status}: ${text.slice(0, 120)}`);
+  }
   if (!response.ok) {
     throw new Error(`${options.method || "GET"} ${path} failed ${response.status}: ${text}`);
   }
@@ -92,6 +97,13 @@ async function main() {
   });
   assert(activeExecution.status === "active", "execution did not become active");
 
+  const inProgress = await api(`/mes/work-orders/${workOrder.id}/status`, {
+    ...auth,
+    method: "PATCH",
+    body: { status: "in_progress", comment: "smoke execution started" },
+  });
+  assert(inProgress.status === "in_progress", "work order did not move to in_progress");
+
   const completedExecution = await api(`/mes/work-order-executions/${execution.id}/status`, {
     ...auth,
     method: "PATCH",
@@ -99,7 +111,7 @@ async function main() {
   });
   assert(completedExecution.status === "completed", "execution did not complete");
 
-  const ledger = await api(`/stock/ledger?executionId=${execution.id}`, auth);
+  const ledger = await api(`/inventory/stock/ledger?executionId=${execution.id}`, auth);
   const receipt = ledger.find((row: JsonRecord) => row.movementType === "produce_receipt" && row.executionId === execution.id);
   assert(receipt, "produce receipt was not posted for execution");
 
