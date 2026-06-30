@@ -26,6 +26,7 @@ const WorkforceManager = lazy(() => import('./components/WorkforceManager'));
 const PilotReadinessChecklist = lazy(() => import('./components/PilotReadinessChecklist'));
 const InviteAcceptance = lazy(() => import('./components/InviteAcceptance'));
 const WorkOrderStudio = lazy(() => import('./components/WorkOrderStudio'));
+const Sprint4CoreModule = lazy(() => import('./components/Sprint4CoreModule'));
 
 // Loading fallback component
 function TabLoadingFallback() {
@@ -160,6 +161,12 @@ export default function App() {
         return (
           <Suspense fallback={<TabLoadingFallback />}>
             <WorkOrderStudio />
+          </Suspense>
+        );
+      case 'sprint4-core':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <Sprint4CoreModule />
           </Suspense>
         );
       default:

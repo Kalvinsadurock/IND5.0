@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
+import { authenticate, requirePermission, requireTenant } from "../../middleware/auth";
 import {
   configurableObjectTypes,
   customFieldDefinitions,
@@ -26,6 +27,12 @@ import {
 } from "../../../shared/schema";
 
 const router = Router();
+const manageTenant = requirePermission("platform.tenant.manage");
+const manageCompany = requirePermission("platform.company.manage");
+const managePlant = requirePermission("platform.plant.manage");
+const manageUsers = requirePermission("platform.user.manage");
+const manageRoles = requirePermission("platform.role.manage");
+const manageHrmsEmployees = requirePermission("hrms.employee.manage");
 
 const actorType = "user";
 
@@ -504,7 +511,13 @@ router.post("/platform/onboarding/bootstrap", async (req, res) => {
       workflow,
       industryTemplate: template.label,
     });
+  } catch (error) {
+    console.error("Tenant onboarding bootstrap failed", error);
+    res.status(500).json({ error: "Failed to bootstrap tenant onboarding" });
+  }
 });
+
+router.use(authenticate, requireTenant);
 
 router.get("/platform/tenant/readiness", async (req, res) => {
   try {
@@ -548,6 +561,10 @@ router.get("/platform/tenant/readiness", async (req, res) => {
       { item: "Released Work Orders Available", completed: workOrderCompleted, link: "/operations" },
       { item: "OEE Tracking Active", completed: oeeCompleted, link: "/oee" }
     ]);
+  } catch (error) {
+    console.error("Tenant readiness check failed", error);
+    res.status(500).json({ error: "Failed to fetch tenant readiness" });
+  }
 });
 
 router.get("/platform/hierarchy/tree", async (req, res) => {
@@ -600,7 +617,7 @@ router.get("/platform/hierarchy/tree", async (req, res) => {
   }
 });
 
-router.post("/platform/hierarchy/:type", async (req, res) => {
+router.post("/platform/hierarchy/:type", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -662,7 +679,7 @@ router.post("/platform/hierarchy/:type", async (req, res) => {
   }
 });
 
-router.patch("/platform/hierarchy/:type/:id", async (req, res) => {
+router.patch("/platform/hierarchy/:type/:id", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -696,7 +713,7 @@ router.patch("/platform/hierarchy/:type/:id", async (req, res) => {
   }
 });
 
-router.delete("/platform/hierarchy/:type/:id", async (req, res) => {
+router.delete("/platform/hierarchy/:type/:id", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -784,7 +801,7 @@ router.get("/platform/rbac/matrix", async (req, res) => {
   }
 });
 
-router.put("/platform/rbac/matrix", async (req, res) => {
+router.put("/platform/rbac/matrix", manageRoles, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -889,7 +906,7 @@ router.get("/platform/tenants", async (_req, res) => {
   }
 });
 
-router.post("/platform/tenants", async (req, res) => {
+router.post("/platform/tenants", manageTenant, async (req, res) => {
   try {
     const [created] = await db.insert(platformTenants).values({
       name: req.body.name,
@@ -927,7 +944,7 @@ router.get("/platform/tenants/current", async (req, res) => {
   }
 });
 
-router.patch("/platform/tenants/current", async (req, res) => {
+router.patch("/platform/tenants/current", manageTenant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -966,7 +983,7 @@ router.get("/platform/companies", async (req, res) => {
   }
 });
 
-router.post("/platform/companies", async (req, res) => {
+router.post("/platform/companies", manageCompany, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -995,7 +1012,7 @@ router.get("/platform/plants", async (req, res) => {
   }
 });
 
-router.post("/platform/plants", async (req, res) => {
+router.post("/platform/plants", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -1034,7 +1051,7 @@ router.get("/platform/plants/:id/hierarchy", async (req, res) => {
   }
 });
 
-router.post("/platform/areas", async (req, res) => {
+router.post("/platform/areas", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -1055,7 +1072,7 @@ router.get("/platform/areas", async (req, res) => {
   }
 });
 
-router.patch("/platform/areas/:id", async (req, res) => {
+router.patch("/platform/areas/:id", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const before = await findHierarchyRow(platformAreas, req.params.id, tenantId);
@@ -1070,7 +1087,7 @@ router.patch("/platform/areas/:id", async (req, res) => {
   }
 });
 
-router.delete("/platform/areas/:id", async (req, res) => {
+router.delete("/platform/areas/:id", managePlant, async (req, res) => {
   await deleteHierarchyRow(req, res, {
     table: platformAreas,
     entityType: "area",
@@ -1079,7 +1096,7 @@ router.delete("/platform/areas/:id", async (req, res) => {
   });
 });
 
-router.post("/platform/departments", async (req, res) => {
+router.post("/platform/departments", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -1100,7 +1117,7 @@ router.get("/platform/departments", async (req, res) => {
   }
 });
 
-router.patch("/platform/departments/:id", async (req, res) => {
+router.patch("/platform/departments/:id", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const before = await findHierarchyRow(platformDepartments, req.params.id, tenantId);
@@ -1115,7 +1132,7 @@ router.patch("/platform/departments/:id", async (req, res) => {
   }
 });
 
-router.delete("/platform/departments/:id", async (req, res) => {
+router.delete("/platform/departments/:id", managePlant, async (req, res) => {
   await deleteHierarchyRow(req, res, {
     table: platformDepartments,
     entityType: "department",
@@ -1124,7 +1141,7 @@ router.delete("/platform/departments/:id", async (req, res) => {
   });
 });
 
-router.post("/platform/lines", async (req, res) => {
+router.post("/platform/lines", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -1145,7 +1162,7 @@ router.get("/platform/lines", async (req, res) => {
   }
 });
 
-router.patch("/platform/lines/:id", async (req, res) => {
+router.patch("/platform/lines/:id", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const before = await findHierarchyRow(platformLines, req.params.id, tenantId);
@@ -1160,7 +1177,7 @@ router.patch("/platform/lines/:id", async (req, res) => {
   }
 });
 
-router.delete("/platform/lines/:id", async (req, res) => {
+router.delete("/platform/lines/:id", managePlant, async (req, res) => {
   await deleteHierarchyRow(req, res, {
     table: platformLines,
     entityType: "line",
@@ -1169,7 +1186,7 @@ router.delete("/platform/lines/:id", async (req, res) => {
   });
 });
 
-router.post("/platform/work-centers", async (req, res) => {
+router.post("/platform/work-centers", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -1190,7 +1207,7 @@ router.get("/platform/work-centers", async (req, res) => {
   }
 });
 
-router.patch("/platform/work-centers/:id", async (req, res) => {
+router.patch("/platform/work-centers/:id", managePlant, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const before = await findHierarchyRow(platformWorkCenters, req.params.id, tenantId);
@@ -1205,7 +1222,7 @@ router.patch("/platform/work-centers/:id", async (req, res) => {
   }
 });
 
-router.delete("/platform/work-centers/:id", async (req, res) => {
+router.delete("/platform/work-centers/:id", managePlant, async (req, res) => {
   await deleteHierarchyRow(req, res, {
     table: platformWorkCenters,
     entityType: "work_center",
@@ -1224,7 +1241,7 @@ router.get("/platform/users", async (req, res) => {
   }
 });
 
-router.post("/platform/users/invite", async (req, res) => {
+router.post("/platform/users/invite", manageUsers, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });
@@ -1242,7 +1259,7 @@ router.post("/platform/users/invite", async (req, res) => {
   }
 });
 
-router.patch("/platform/users/:id/status", async (req, res) => {
+router.patch("/platform/users/:id/status", manageUsers, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const [before] = await db.select().from(platformUsers).where(eq(platformUsers.id, req.params.id));
@@ -1264,7 +1281,7 @@ router.get("/platform/roles", async (req, res) => {
   }
 });
 
-router.post("/platform/roles", async (req, res) => {
+router.post("/platform/roles", manageRoles, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const [created] = await db.insert(platformRoles).values({
@@ -1299,7 +1316,7 @@ router.get("/platform/roles/:id/permissions", async (req, res) => {
   }
 });
 
-router.post("/platform/roles/:id/permissions", async (req, res) => {
+router.post("/platform/roles/:id/permissions", manageRoles, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const permissionIds = Array.isArray(req.body.permissionIds) ? req.body.permissionIds : [];
@@ -1315,7 +1332,7 @@ router.post("/platform/roles/:id/permissions", async (req, res) => {
   }
 });
 
-router.delete("/platform/roles/:id/permissions/:permissionId", async (req, res) => {
+router.delete("/platform/roles/:id/permissions/:permissionId", manageRoles, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const [deleted] = await db.delete(platformRolePermissions)
@@ -1331,7 +1348,7 @@ router.delete("/platform/roles/:id/permissions/:permissionId", async (req, res) 
   }
 });
 
-router.post("/platform/users/:id/roles", async (req, res) => {
+router.post("/platform/users/:id/roles", manageUsers, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const [created] = await db.insert(platformUserRoleAssignments).values({
@@ -1382,7 +1399,7 @@ router.get("/hrms/employees", async (req, res) => {
   }
 });
 
-router.post("/hrms/employees", async (req, res) => {
+router.post("/hrms/employees", manageHrmsEmployees, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     if (!tenantId) return res.status(400).json({ error: "tenantId is required" });

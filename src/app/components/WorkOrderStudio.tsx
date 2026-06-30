@@ -20,7 +20,24 @@ type WorkOrder = {
   createdAt: string;
 };
 
+type WorkOrderExecution = {
+  id: string;
+  workOrderId: string;
+  executionNumber: string;
+  status: string;
+  partId?: number | null;
+  processId?: number | null;
+  currentStepId?: number | null;
+  plannedQuantity: string;
+  goodQuantity: string;
+  rejectedQuantity: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  createdAt: string;
+};
+
 const statusOptions = ['draft', 'released', 'in_progress', 'quality_hold', 'completed', 'cancelled'];
+const executionStatusOptions = ['planned', 'active', 'paused', 'blocked', 'completed', 'cancelled'];
 const priorityOptions = ['normal', 'high', 'critical'];
 
 const emptyForm = {
@@ -62,7 +79,11 @@ export default function WorkOrderStudio() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
+  const [executions, setExecutions] = useState<WorkOrderExecution[]>([]);
+  const [executionForm, setExecutionForm] = useState({ processId: '', partId: '', plannedQuantity: '1' });
   const [loading, setLoading] = useState(false);
+  const [executionLoading, setExecutionLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,6 +162,69 @@ export default function WorkOrderStudio() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to change status');
+    }
+  }
+
+  async function loadExecutions(workOrder: WorkOrder) {
+    setSelectedOrder(workOrder);
+    setExecutionLoading(true);
+    try {
+      const res = await fetch(`/api/mes/work-orders/${workOrder.id}/executions`, { headers });
+      const json = await readJsonResponse<WorkOrderExecution[]>(res);
+      if (!res.ok) throw new Error(responseError(res, json, 'Failed to load executions'));
+      setExecutions(json || []);
+      setExecutionForm({ processId: '', partId: '', plannedQuantity: workOrder.plannedQuantity || '1' });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load executions');
+    } finally {
+      setExecutionLoading(false);
+    }
+  }
+
+  async function createExecution(event: React.FormEvent) {
+    event.preventDefault();
+    if (!selectedOrder) return;
+    setExecutionLoading(true);
+    try {
+      const payload = {
+        processId: executionForm.processId || null,
+        partId: executionForm.partId || null,
+        plannedQuantity: executionForm.plannedQuantity || selectedOrder.plannedQuantity,
+      };
+      const res = await fetch(`/api/mes/work-orders/${selectedOrder.id}/executions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      const json = await readJsonResponse<WorkOrderExecution>(res);
+      if (!res.ok) throw new Error(responseError(res, json, 'Failed to create execution'));
+      if (json) setExecutions((current) => [json, ...current]);
+      setExecutionForm({ processId: '', partId: '', plannedQuantity: selectedOrder.plannedQuantity || '1' });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create execution');
+    } finally {
+      setExecutionLoading(false);
+    }
+  }
+
+  async function changeExecutionStatus(execution: WorkOrderExecution, status: string) {
+    setExecutionLoading(true);
+    try {
+      const res = await fetch(`/api/mes/work-order-executions/${execution.id}/status`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status }),
+      });
+      const json = await readJsonResponse<WorkOrderExecution>(res);
+      if (!res.ok) throw new Error(responseError(res, json, 'Failed to update execution'));
+      setExecutions((current) => current.map((item) => (item.id === execution.id && json ? json : item)));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update execution');
+    } finally {
+      setExecutionLoading(false);
     }
   }
 
@@ -261,6 +345,9 @@ export default function WorkOrderStudio() {
                         {statusLabel(status)}
                       </button>
                     ))}
+                    <button className="rounded border border-emerald-700 bg-emerald-950/30 px-2 py-1 text-xs text-emerald-100 hover:border-emerald-400" onClick={() => loadExecutions(order)}>
+                      Executions
+                    </button>
                   </div>
                 </div>
                 <div className="mt-3 grid gap-3 text-xs text-slate-400 sm:grid-cols-3">
@@ -277,6 +364,67 @@ export default function WorkOrderStudio() {
           </div>
         </section>
       </div>
+
+      <section className="rounded-lg border border-slate-700 bg-slate-800/70">
+        <div className="flex flex-col gap-2 border-b border-slate-700 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold text-white">Execution Bridge</h2>
+            <p className="text-xs text-slate-400">
+              {selectedOrder ? `${selectedOrder.workOrderNumber} execution instances` : 'Select a work order to create or inspect execution runs.'}
+            </p>
+          </div>
+          <Icons.Activity className="h-5 w-5 text-emerald-400" />
+        </div>
+
+        {selectedOrder ? (
+          <div className="grid gap-6 p-4 xl:grid-cols-[0.8fr_1.2fr]">
+            <form onSubmit={createExecution} className="space-y-3 rounded border border-slate-700 bg-slate-900/50 p-4">
+              <h3 className="text-sm font-semibold text-white">Create Execution Run</h3>
+              <input className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" placeholder="Process id" value={executionForm.processId} onChange={(event) => setExecutionForm({ ...executionForm, processId: event.target.value })} />
+              <input className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" placeholder="Existing part id (optional)" value={executionForm.partId} onChange={(event) => setExecutionForm({ ...executionForm, partId: event.target.value })} />
+              <input className="w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-emerald-500" type="number" min="0" step="0.001" value={executionForm.plannedQuantity} onChange={(event) => setExecutionForm({ ...executionForm, plannedQuantity: event.target.value })} />
+              <button className="inline-flex h-10 w-full items-center justify-center gap-2 rounded bg-emerald-600 px-4 text-sm font-medium text-white hover:bg-emerald-500 disabled:bg-slate-700" disabled={executionLoading}>
+                {executionLoading ? <Icons.Loader2 className="h-4 w-4 animate-spin" /> : <Icons.Play className="h-4 w-4" />}
+                Create Execution
+              </button>
+            </form>
+
+            <div className="space-y-3">
+              {executions.length ? executions.map((execution) => (
+                <div key={execution.id} className="rounded border border-slate-700 bg-slate-900/50 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-white">{execution.executionNumber}</span>
+                        <Badge tone={statusTone(execution.status)}>{statusLabel(execution.status)}</Badge>
+                      </div>
+                      <div className="mt-2 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
+                        <span>Plan: {execution.plannedQuantity}</span>
+                        <span>Good: {execution.goodQuantity}</span>
+                        <span>Reject: {execution.rejectedQuantity}</span>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">Process {execution.processId || 'not set'} / Part {execution.partId || 'not linked'}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {executionStatusOptions.filter((status) => status !== execution.status).slice(0, 4).map((status) => (
+                        <button key={status} className="rounded border border-slate-600 px-2 py-1 text-xs capitalize text-slate-200 hover:border-emerald-500" onClick={() => changeExecutionStatus(execution, status)}>
+                          {statusLabel(status)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )) : (
+                <div className="rounded border border-slate-700 bg-slate-900/50 p-6 text-sm text-slate-400">
+                  No execution runs linked yet.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="p-6 text-sm text-slate-400">Open a work order and click Executions.</div>
+        )}
+      </section>
     </div>
   );
 }

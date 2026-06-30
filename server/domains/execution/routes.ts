@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db";
 import { eq, and, desc } from "drizzle-orm";
+import { authenticate, requirePermission, requireTenant } from "../../middleware/auth";
 import {
     parts,
     processSteps,
@@ -9,13 +10,17 @@ import {
     checkpointResults,
     kit_inventory,
     resin_lot_inventory,
-    resin_consumption
+    resin_consumption,
+    workOrderExecutions
 } from "../../../shared/schema";
 
 const router = Router();
+const canReadExecution = [authenticate, requireTenant];
+const canExecuteMes = [authenticate, requireTenant, requirePermission("mes.work_order.execute")];
+const canApproveQuality = [authenticate, requireTenant, requirePermission("quality.inspection.approve")];
 
 // GET /api/parts/:id/step-instances
-router.get('/parts/:id/step-instances', async (req, res) => {
+router.get('/parts/:id/step-instances', canReadExecution, async (req, res) => {
     try {
         const partId = parseInt(req.params.id);
         if (isNaN(partId)) return res.status(400).json({ error: 'Invalid part ID' });
@@ -33,7 +38,7 @@ router.get('/parts/:id/step-instances', async (req, res) => {
 });
 
 // POST /api/process-execution/start (Start Work Order / Part)
-router.post('/process-execution/start', async (req, res) => {
+router.post('/process-execution/start', canExecuteMes, async (req, res) => {
     try {
         const { processId, startedBy, materialIds } = req.body;
         if (!processId || !startedBy || !Array.isArray(materialIds)) return res.status(400).json({ error: 'processId, startedBy and materialIds are required' });
@@ -100,7 +105,7 @@ router.post('/process-execution/start', async (req, res) => {
 });
 
 // GET /api/parts/:partId/steps/:stepId/checkpoint-results
-router.get('/parts/:partId/steps/:stepId/checkpoint-results', async (req, res) => {
+router.get('/parts/:partId/steps/:stepId/checkpoint-results', canReadExecution, async (req, res) => {
     try {
         const partId = parseInt(req.params.partId);
         const stepId = parseInt(req.params.stepId);
@@ -147,7 +152,7 @@ router.get('/parts/:partId/steps/:stepId/checkpoint-results', async (req, res) =
 });
 
 // POST /api/step-instances/start
-router.post('/step-instances/start', async (req, res) => {
+router.post('/step-instances/start', canExecuteMes, async (req, res) => {
     try {
         const { partId, stepId, employeeId } = req.body;
 
@@ -230,12 +235,18 @@ router.post('/step-instances/start', async (req, res) => {
                 .where(eq(checkpointResults.instanceId, instance.id));
 
             const existingCheckpoints = new Set(existingResults.map(r => r.checkpointId));
+            const [execution] = await db.select().from(workOrderExecutions)
+                .where(and(
+                    eq(workOrderExecutions.partId, partId),
+                    eq(workOrderExecutions.status, "active")
+                ));
 
             const toInsert = checkpoints
                 .filter(cp => !existingCheckpoints.has(cp.id))
                 .map(cp => ({
                     instanceId: instance.id,
                     checkpointId: cp.id,
+                    executionId: execution?.id || null,
                     status: 'pending',
                     qaResult: 'pending'
                     // createdAt handled by defaultNow()
@@ -259,7 +270,7 @@ router.post('/step-instances/start', async (req, res) => {
 });
 
 // POST /api/step-instances/:id/complete
-router.post('/step-instances/:id/complete', async (req, res) => {
+router.post('/step-instances/:id/complete', canExecuteMes, async (req, res) => {
     try {
         const instanceId = parseInt(req.params.id);
         if (isNaN(instanceId)) return res.status(400).json({ error: "Invalid instance ID" });
@@ -328,7 +339,7 @@ router.post('/step-instances/:id/complete', async (req, res) => {
 });
 
 // POST /api/checkpoints/:id/confirm
-router.post('/checkpoints/:id/confirm', async (req, res) => {
+router.post('/checkpoints/:id/confirm', canApproveQuality, async (req, res) => {
     try {
         const resultId = parseInt(req.params.id);
         if (isNaN(resultId)) return res.status(400).json({ error: 'Invalid result ID' });

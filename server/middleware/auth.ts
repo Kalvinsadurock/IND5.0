@@ -7,7 +7,7 @@ import {
   platformPermissions,
   platformAuditEvents
 } from "../../shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, isNull, lte, gte } from "drizzle-orm";
 
 export interface AuthenticatedRequest extends Request {
   tenantId?: string;
@@ -52,6 +52,9 @@ export function authenticate(req: AuthenticatedRequest, res: Response, next: Nex
  */
 export function requireTenant(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.tenantId) {
+    void emitAudit(req, "TENANT_CONTEXT_MISSING", {
+      attemptedAction: req.method + " " + req.path
+    }, "failure");
     return res.status(401).json({ error: "Tenant context missing" });
   }
   next();
@@ -67,6 +70,10 @@ export function requirePermission(permissionCode: string) {
     const tenantId = req.tenantId;
 
     if (!userId || !tenantId) {
+      await emitAudit(req, "PERMISSION_CONTEXT_MISSING", {
+        permissionCode,
+        attemptedAction: req.method + " " + req.path
+      }, "failure");
       return res.status(403).json({ error: "Context identification missing (userId or tenantId)" });
     }
 
@@ -79,6 +86,11 @@ export function requirePermission(permissionCode: string) {
         .where(and(
           eq(platformUserRoleAssignments.userId, userId),
           eq(platformUserRoleAssignments.tenantId, tenantId),
+          eq(platformUserRoleAssignments.status, "active"),
+          eq(platformRoles.tenantId, tenantId),
+          eq(platformRoles.status, "active"),
+          or(isNull(platformUserRoleAssignments.startsAt), lte(platformUserRoleAssignments.startsAt, new Date())),
+          or(isNull(platformUserRoleAssignments.endsAt), gte(platformUserRoleAssignments.endsAt, new Date())),
           eq(platformPermissions.code, permissionCode)
         )).limit(1);
 

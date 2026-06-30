@@ -14,8 +14,8 @@ async function main() {
 
     try {
         const auth = await signInWithPassword(email, password);
-        if (auth.error || !auth.access_token) {
-            console.error('Auth failed');
+        if ('error' in auth) {
+            console.error('Auth failed', auth.error);
             process.exit(1);
         }
         token = auth.access_token;

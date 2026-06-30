@@ -1,15 +1,18 @@
 import { Router } from 'express';
 import { db } from '../../db';
 import { eq, and, isNull, desc } from 'drizzle-orm';
+import { authenticate, requirePermission, requireTenant } from '../../middleware/auth';
 import { shiftLogs, employees } from '../../../shared/schema';
 
 const router = Router();
+const canReadShift = [authenticate, requireTenant];
+const canManageShift = [authenticate, requireTenant, requirePermission('oee.shift.manage')];
 
 /**
  * GET /api/shifts/active/:userId
  * Fetch currently active shift log for a user
  */
-router.get('/active/:userId', async (req, res) => {
+router.get('/active/:userId', canReadShift, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId);
     if (isNaN(userId)) return res.status(400).json({ error: 'Invalid user ID' });
@@ -32,7 +35,7 @@ router.get('/active/:userId', async (req, res) => {
  * GET /api/shifts/logs
  * Fetch all shift logs (completed and active)
  */
-router.get('/logs', async (req, res) => {
+router.get('/logs', canReadShift, async (req, res) => {
   try {
     const logs = await db.select({
       id: shiftLogs.id,
@@ -62,12 +65,12 @@ router.get('/logs', async (req, res) => {
  * POST /api/shifts/clock-in
  * Start a shift log session (Clock In)
  */
-router.post('/clock-in', async (req, res) => {
+router.post('/clock-in', canManageShift, async (req, res) => {
   try {
-    const { shiftCode, crewMembers, recordedById } = req.body;
+    const { shiftCode, crewMembers, recordedById, instanceId } = req.body;
 
-    if (!shiftCode || !recordedById) {
-      return res.status(400).json({ error: 'Missing shift code or user ID' });
+    if (!shiftCode || !recordedById || !instanceId) {
+      return res.status(400).json({ error: 'Missing shift code, user ID, or step instance ID' });
     }
 
     // Check if there is already an active shift for this operator
@@ -82,13 +85,13 @@ router.post('/clock-in', async (req, res) => {
       return res.status(400).json({ error: 'You are already clocked in to a shift' });
     }
 
-    // Format today's date: YYYY-MM-DD
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
 
     const [newShift] = await db.insert(shiftLogs).values({
       shiftCode,
-      shiftDate: todayStr,
-      startTime: new Date(),
+      shiftDate: today,
+      startTime: today,
+      instanceId,
       crewMembers: crewMembers || [],
       recordedById
     }).returning();
@@ -104,7 +107,7 @@ router.post('/clock-in', async (req, res) => {
  * POST /api/shifts/clock-out
  * Complete a shift log session (Clock Out + log Handover notes)
  */
-router.post('/clock-out', async (req, res) => {
+router.post('/clock-out', canManageShift, async (req, res) => {
   try {
     const { shiftId, handoverNotes } = req.body;
 

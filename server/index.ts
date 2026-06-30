@@ -14,10 +14,12 @@ import { resourcesRouter } from "./domains/resources/routes";
 import { authRouter } from "./domains/auth/routes";
 import { analyticsRouter } from "./domains/analytics/routes";
 import { processInventoryRouter } from "./domains/inventory/process-inventory-routes";
+import { sprint4InventoryRouter } from "./domains/inventory/sprint4-routes";
 import { readinessRouter } from "./domains/execution/readiness-routes";
 import { startRouter } from "./domains/execution/start-routes";
 import { processDetailsRouter } from "./domains/execution/process-details-routes";
 import { qualityRouter } from "./domains/execution/quality-routes";
+import { inspectionPlanRouter } from "./domains/execution/inspection-plan-routes";
 import { shiftRouter } from "./domains/execution/shift-routes";
 import { platformRouter } from "./domains/platform/routes";
 import { configurationRouter } from "./domains/configuration/routes";
@@ -89,6 +91,7 @@ app.use('/api/shifts', shiftRouter);
 // Inventory: /api/inventory/dashboard-summary (and others if migrated)
 app.use('/api', inventoryRouter); // Exposes /api/resin/create
 app.use('/api/inventory', inventoryRouter);
+app.use('/api/inventory', sprint4InventoryRouter);
 // Keep /api/materials separately if needed for backwards compatibility or refactor router to use base path
 app.use('/api/materials', inventoryRouter);
 
@@ -106,6 +109,9 @@ app.use('/api', workOrderRouter);
 
 // OEE tracking
 app.use('/api', oeeRouter);
+
+// Quality inspection plan versioning
+app.use('/api', inspectionPlanRouter);
 
 // Error handling
 app.use((err: any, req: any, res: any, next: any) => {

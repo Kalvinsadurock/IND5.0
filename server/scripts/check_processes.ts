@@ -13,17 +13,18 @@ async function checkProcesses() {
 
     output.push(`Found ${allProcesses.length} processes:`);
     allProcesses.forEach(p => {
-        output.push(`  - ID: ${p.id}, Code: ${p.processCode}, Name: ${p.name}`);
+        output.push(`  - ID: ${p.id}, Code: ${p.code}, Name: ${p.name}`);
     });
 
     // Find Sparboom process
     const sparboomProcess = allProcesses.find(p =>
         p.name?.toLowerCase().includes('spar') ||
-        p.processCode?.includes('40')
+        p.code?.includes('40') ||
+        p.processNumber === 40
     );
 
     if (sparboomProcess) {
-        output.push(`\n✅ Found Sparboom process: ID ${sparboomProcess.id}, Code: ${sparboomProcess.processCode}`);
+        output.push(`\n✅ Found Sparboom process: ID ${sparboomProcess.id}, Code: ${sparboomProcess.code}`);
 
         const steps = await db
             .select()

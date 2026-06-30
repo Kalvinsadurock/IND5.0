@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../db';
 import { eq, and, or, desc } from 'drizzle-orm';
+import { authenticate, requirePermission, requireTenant } from '../../middleware/auth';
 import { 
   checkpointResults, 
   controlCheckpoints, 
@@ -12,12 +13,14 @@ import {
 } from '../../../shared/schema';
 
 const router = Router();
+const canReadQuality = [authenticate, requireTenant];
+const canApproveQuality = [authenticate, requireTenant, requirePermission('quality.inspection.approve')];
 
 /**
  * GET /api/quality/defects
  * Fetch all failed checkpoint results (defects)
  */
-router.get('/defects', async (req, res) => {
+router.get('/defects', canReadQuality, async (req, res) => {
   try {
     const defects = await db.select({
       id: checkpointResults.id,
@@ -31,11 +34,11 @@ router.get('/defects', async (req, res) => {
       notes: checkpointResults.notes,
       createdAt: checkpointResults.createdAt,
       checkpointName: controlCheckpoints.name,
-      parameter: controlCheckpoints.parameter,
+      parameter: controlCheckpoints.characteristic,
       specification: controlCheckpoints.specification,
       partId: parts.id,
       partNumber: parts.partNumber,
-      serialNumber: parts.serialNumber,
+      serialNumber: parts.partNumber,
       partStatus: parts.status,
       stepId: partStepInstances.stepId,
       stepName: partStepInstances.status,
@@ -63,7 +66,7 @@ router.get('/defects', async (req, res) => {
  * POST /api/quality/treatment/rework
  * Initiate a rework loop for a part, resetting it back to a previous step
  */
-router.post('/treatment/rework', async (req, res) => {
+router.post('/treatment/rework', canApproveQuality, async (req, res) => {
   try {
     const { resultId, toStepId, reason, initiatedById } = req.body;
 
@@ -128,7 +131,7 @@ router.post('/treatment/rework', async (req, res) => {
       stepId: toStepId,
       status: 'active',
       startedAt: new Date(),
-      entryReason: 'rework'
+      notes: 'Rework entry'
     }).returning();
 
     // 7. Log timeline event
@@ -152,7 +155,7 @@ router.post('/treatment/rework', async (req, res) => {
  * POST /api/quality/treatment/scrap
  * Mark part as scrapped due to defect
  */
-router.post('/treatment/scrap', async (req, res) => {
+router.post('/treatment/scrap', canApproveQuality, async (req, res) => {
   try {
     const { resultId, reason, initiatedById } = req.body;
 
@@ -218,7 +221,7 @@ router.post('/treatment/scrap', async (req, res) => {
  * POST /api/quality/treatment/deviation
  * Approve a quality deviation for a checkpoint result
  */
-router.post('/treatment/deviation', async (req, res) => {
+router.post('/treatment/deviation', canApproveQuality, async (req, res) => {
   try {
     const { resultId, deviationNumber, notes, approvedById } = req.body;
 

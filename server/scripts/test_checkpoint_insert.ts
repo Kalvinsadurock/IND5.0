@@ -9,7 +9,7 @@ async function testInsert() {
     const steps = await db
         .select()
         .from(processSteps)
-        .where(eq(processSteps.stepId, 4));
+        .where(eq(processSteps.id, 4));
 
     const step4001 = steps.find(s => s.stepNumber === '40.01');
 

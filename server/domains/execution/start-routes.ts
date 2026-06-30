@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { db } from '../../db';
 import { eq, and, sql } from 'drizzle-orm';
+import { getOperationalContext, sendOperationalError, writeOperationalAudit } from '../../lib/operational-context';
+import { authenticate, requirePermission, requireTenant } from '../../middleware/auth';
 import {
     processes,
     processSteps,
@@ -9,9 +11,36 @@ import {
     kit_inventory,
     resin_lot_inventory,
     resin_consumption,
+    inventoryMaterials,
+    inventoryStockLedger,
+    mesWorkOrders,
+    workOrderExecutions,
 } from '../../../shared/schema';
 
 const router = Router();
+const canExecuteMes = [authenticate, requireTenant, requirePermission('mes.work_order.execute')];
+
+async function ensureSystemMaterial(tx: any, tenantId: string, materialCode: string, materialName: string, materialType: string) {
+    const [existing] = await tx
+        .select()
+        .from(inventoryMaterials)
+        .where(and(eq(inventoryMaterials.tenantId, tenantId), eq(inventoryMaterials.materialCode, materialCode)));
+
+    if (existing) return existing;
+
+    const [created] = await tx.insert(inventoryMaterials).values({
+        tenantId,
+        materialCode,
+        materialName,
+        materialType,
+        baseUom: 'ea',
+        status: 'active',
+        lotControlled: true,
+        serialControlled: false,
+    } as any).returning();
+
+    return created;
+}
 
 /**
  * POST /api/processes/:id/start
@@ -24,9 +53,16 @@ const router = Router();
  * 
  * Transaction-safe with full rollback on failure
  */
-router.post('/processes/:id/start', async (req, res) => {
+router.post('/processes/:id/start', canExecuteMes, async (req, res) => {
     const processId = parseInt(req.params.id);
-    const { employeeId, materialBindings } = req.body;
+    const { employeeId, materialBindings, workOrderId, executionId } = req.body;
+    let context;
+    try {
+        context = getOperationalContext(req);
+    } catch (error) {
+        return sendOperationalError(res, error, 'Failed to resolve operational context');
+    }
+    const { tenantId, actorUserId } = context;
 
     if (isNaN(processId)) {
         return res.status(400).json({ error: 'Invalid process ID' });
@@ -38,6 +74,10 @@ router.post('/processes/:id/start', async (req, res) => {
 
     if (!materialBindings || typeof materialBindings !== 'object') {
         return res.status(400).json({ error: 'materialBindings is required' });
+    }
+
+    if ((workOrderId || executionId) && !tenantId) {
+        return res.status(400).json({ error: 'tenantId is required when starting a work order execution' });
     }
 
     try {
@@ -150,6 +190,74 @@ router.post('/processes/:id/start', async (req, res) => {
                 .values(stepInstancesData)
                 .returning();
 
+            let linkedExecution: any = null;
+            let linkedWorkOrder: any = null;
+
+            if (tenantId && (executionId || workOrderId)) {
+                if (executionId) {
+                    const [existingExecution] = await tx
+                        .select()
+                        .from(workOrderExecutions)
+                        .where(and(
+                            eq(workOrderExecutions.id, executionId),
+                            eq(workOrderExecutions.tenantId, tenantId)
+                        ));
+                    if (!existingExecution) throw new Error('Work order execution not found');
+                    linkedExecution = existingExecution;
+                    linkedWorkOrder = { id: existingExecution.workOrderId };
+                } else {
+                    const [existingWorkOrder] = await tx
+                        .select()
+                        .from(mesWorkOrders)
+                        .where(and(
+                            eq(mesWorkOrders.id, workOrderId),
+                            eq(mesWorkOrders.tenantId, tenantId)
+                        ));
+                    if (!existingWorkOrder) throw new Error('Work order not found');
+                    linkedWorkOrder = existingWorkOrder;
+                    const [createdExecution] = await tx.insert(workOrderExecutions).values({
+                        tenantId,
+                        workOrderId: existingWorkOrder.id,
+                        partId: newPart.id,
+                        processId,
+                        currentStepId: steps[0].id,
+                        executionNumber: `${existingWorkOrder.workOrderNumber}-EX-${Date.now()}`,
+                        status: 'active',
+                        plannedQuantity: String(existingWorkOrder.plannedQuantity || '1'),
+                        startedAt: new Date(),
+                        createdBy: actorUserId,
+                        updatedBy: actorUserId,
+                    } as any).returning();
+                    linkedExecution = createdExecution;
+                }
+
+                if (linkedExecution) {
+                    const [updatedExecution] = await tx.update(workOrderExecutions).set({
+                        partId: newPart.id,
+                        processId,
+                        currentStepId: steps[0].id,
+                        status: 'active',
+                        startedAt: linkedExecution.startedAt || new Date(),
+                        updatedAt: new Date(),
+                        updatedBy: actorUserId,
+                    } as any).where(and(
+                        eq(workOrderExecutions.id, linkedExecution.id),
+                        eq(workOrderExecutions.tenantId, tenantId)
+                    )).returning();
+                    linkedExecution = updatedExecution;
+
+                    await tx.update(mesWorkOrders).set({
+                        status: 'in_progress',
+                        startedAt: new Date(),
+                        updatedAt: new Date(),
+                        updatedBy: actorUserId,
+                    } as any).where(and(
+                        eq(mesWorkOrders.id, linkedExecution.workOrderId),
+                        eq(mesWorkOrders.tenantId, tenantId)
+                    ));
+                }
+            }
+
             // 6. Consume materials atomically
             if (consumedMaterials.materialKit) {
                 await tx
@@ -161,6 +269,24 @@ router.post('/processes/:id/start', async (req, res) => {
                         consumed_by: newPart.id.toString() // Or associate with employee if available, but partId is critical
                     })
                     .where(eq(kit_inventory.id, consumedMaterials.materialKit.id));
+
+                if (tenantId && linkedExecution) {
+                    const material = await ensureSystemMaterial(tx, tenantId, 'LEGACY_KIT', 'Legacy Material Kit', 'kit');
+                    await tx.insert(inventoryStockLedger).values({
+                        tenantId,
+                        materialId: material.id,
+                        workOrderId: linkedExecution.workOrderId,
+                        executionId: linkedExecution.id,
+                        movementType: 'issue',
+                        quantity: '1',
+                        uom: 'ea',
+                        lotNumber: consumedMaterials.materialKit.kit_code,
+                        referenceType: 'kit_inventory',
+                        referenceId: String(consumedMaterials.materialKit.id),
+                        reason: 'Issued by process start',
+                        postedBy: actorUserId,
+                    } as any);
+                }
             }
 
             if (consumedMaterials.glassKit) {
@@ -173,6 +299,24 @@ router.post('/processes/:id/start', async (req, res) => {
                         consumed_by: newPart.id.toString()
                     })
                     .where(eq(kit_inventory.id, consumedMaterials.glassKit.id));
+
+                if (tenantId && linkedExecution) {
+                    const material = await ensureSystemMaterial(tx, tenantId, 'LEGACY_GLASS', 'Legacy Glass Kit', 'glass_kit');
+                    await tx.insert(inventoryStockLedger).values({
+                        tenantId,
+                        materialId: material.id,
+                        workOrderId: linkedExecution.workOrderId,
+                        executionId: linkedExecution.id,
+                        movementType: 'issue',
+                        quantity: '1',
+                        uom: 'ea',
+                        lotNumber: consumedMaterials.glassKit.kit_code,
+                        referenceType: 'kit_inventory',
+                        referenceId: String(consumedMaterials.glassKit.id),
+                        reason: 'Issued by process start',
+                        postedBy: actorUserId,
+                    } as any);
+                }
             }
 
             if (consumedMaterials.resinLot) {
@@ -192,13 +336,46 @@ router.post('/processes/:id/start', async (req, res) => {
                         consumed_by: newPart.id.toString(),
                         consumed_at: new Date(),
                     });
+
+                if (tenantId && linkedExecution) {
+                    const material = await ensureSystemMaterial(tx, tenantId, 'LEGACY_RESIN', 'Legacy Resin Lot', 'resin');
+                    await tx.insert(inventoryStockLedger).values({
+                        tenantId,
+                        materialId: material.id,
+                        workOrderId: linkedExecution.workOrderId,
+                        executionId: linkedExecution.id,
+                        movementType: 'issue',
+                        quantity: '1',
+                        uom: 'ea',
+                        lotNumber: consumedMaterials.resinLot.resin_code,
+                        referenceType: 'resin_lot_inventory',
+                        referenceId: String(consumedMaterials.resinLot.id),
+                        reason: 'Issued by process start',
+                        postedBy: actorUserId,
+                    } as any);
+                }
             }
 
             return {
                 part: newPart,
                 stepInstances,
                 consumedMaterials,
+                execution: linkedExecution,
             };
+        });
+
+        await writeOperationalAudit(req, {
+            module: 'mes',
+            eventType: 'process_execution.started',
+            entityType: 'work_order_execution',
+            entityId: result.execution?.id ? String(result.execution.id) : null,
+            action: 'start',
+            afterSnapshot: result.execution || result.part,
+            metadata: {
+                processId,
+                partId: result.part.id,
+                materialKeys: Object.keys(result.consumedMaterials || {}),
+            },
         });
 
         // Success response
@@ -216,6 +393,7 @@ router.post('/processes/:id/start', async (req, res) => {
                 status: si.status,
             })),
             consumedMaterials: result.consumedMaterials,
+            execution: result.execution,
         });
     } catch (error) {
         console.error('Process start error:', error);

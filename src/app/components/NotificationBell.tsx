@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, AlertTriangle, ShieldAlert, Clock, X } from 'lucide-react';
+import { Bell, AlertTriangle, ShieldAlert, Clock, X } from '@/shared/ui/icons';
 import { supabase } from '@/shared/api/supabase';
 
 interface AlertNotification {

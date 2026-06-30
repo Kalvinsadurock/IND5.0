@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { db } from '../../db';
 import { partStepInstances, processes, parts } from '../../../shared/schema';
 import { eq, and, sql, gte, inArray } from 'drizzle-orm';
+import { authenticate, requireTenant } from '../../middleware/auth';
 
 const router = Router();
+const canReadAnalytics = [authenticate, requireTenant];
 
 /**
  * ANALYTICS DOMAIN - READ-ONLY ROUTES
@@ -22,7 +24,7 @@ const router = Router();
  * Returns KPI metrics for dashboard sidebar
  * Aggregates data from partStepInstances
  */
-router.get('/kpis', async (req, res) => {
+router.get('/kpis', canReadAnalytics, async (req, res) => {
     try {
         // Get total completed blades (parts with status 'completed')
         const completedResult = await db
@@ -78,7 +80,7 @@ router.get('/kpis', async (req, res) => {
  * Returns summary statistics by process category
  * Aggregates parts grouped by process category
  */
-router.get('/category-summary', async (req, res) => {
+router.get('/category-summary', canReadAnalytics, async (req, res) => {
     try {
         // Get all processes with their categories
         const allProcesses = await db.select().from(processes);
@@ -166,7 +168,7 @@ router.get('/category-summary', async (req, res) => {
  * Returns throughput trend data
  * Status: STUB
  */
-router.get('/trends/throughput', async (req, res) => {
+router.get('/trends/throughput', canReadAnalytics, async (req, res) => {
     try {
         // STUB: Return empty throughput trend
         // TODO: Implement safe read-only time-series aggregation
@@ -182,7 +184,7 @@ router.get('/trends/throughput', async (req, res) => {
  * Returns status distribution trend data
  * Status: STUB
  */
-router.get('/trends/status', async (req, res) => {
+router.get('/trends/status', canReadAnalytics, async (req, res) => {
     try {
         // STUB: Return empty status trend
         // TODO: Implement safe read-only status distribution over time
@@ -198,7 +200,7 @@ router.get('/trends/status', async (req, res) => {
  * Returns yield trend data
  * Status: STUB
  */
-router.get('/trends/yield', async (req, res) => {
+router.get('/trends/yield', canReadAnalytics, async (req, res) => {
     try {
         // STUB: Return empty yield trend
         // TODO: Implement safe read-only yield calculation over time

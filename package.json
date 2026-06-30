@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "typecheck": "tsc --noEmit --pretty false",
     "build:production": "vite build && drizzle-kit push && tsx server/seed.ts",
     "dev": "vite",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/seed.ts",
-    "server": "tsx server/index.ts"
+    "db:migrate:sprint4": "tsx server/scripts/apply_sprint4_migration.ts",
+    "server": "tsx server/index.ts",
+    "smoke:sprint4": "tsx server/scripts/sprint4_pilot_smoke.ts"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

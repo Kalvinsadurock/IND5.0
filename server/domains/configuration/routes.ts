@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db";
+import { authenticate, requirePermission, requireTenant } from "../../middleware/auth";
 import {
   configurableObjectTypes,
   customFieldDefinitions,
@@ -15,6 +16,11 @@ import {
 } from "../../../shared/schema";
 
 const router = Router();
+router.use(authenticate, requireTenant);
+
+const manageObjectTypes = requirePermission("configuration.object_type.manage");
+const manageCustomFields = requirePermission("configuration.custom_field.manage");
+const manageWorkflows = requirePermission("configuration.workflow.manage");
 
 function tenantIdFrom(req: any) {
   return req.header("x-tenant-id") || req.query.tenantId || req.body?.tenantId || null;
@@ -64,7 +70,7 @@ router.get("/configuration/object-types", async (req, res) => {
   }
 });
 
-router.post("/configuration/object-types", async (req, res) => {
+router.post("/configuration/object-types", manageObjectTypes, async (req, res) => {
   try {
     const [created] = await db.insert(configurableObjectTypes).values({
       tenantId: tenantIdFrom(req),
@@ -95,7 +101,7 @@ router.get("/configuration/custom-fields", async (req, res) => {
   }
 });
 
-router.post("/configuration/custom-fields", async (req, res) => {
+router.post("/configuration/custom-fields", manageCustomFields, async (req, res) => {
   try {
     const [created] = await db.insert(customFieldDefinitions).values({
       tenantId: tenantIdFrom(req),
@@ -122,7 +128,7 @@ router.post("/configuration/custom-fields", async (req, res) => {
   }
 });
 
-router.patch("/configuration/custom-fields/:fieldId", async (req, res) => {
+router.patch("/configuration/custom-fields/:fieldId", manageCustomFields, async (req, res) => {
   try {
     const [before] = await db.select().from(customFieldDefinitions).where(eq(customFieldDefinitions.id, req.params.fieldId));
     const [updated] = await db.update(customFieldDefinitions).set({
@@ -145,7 +151,7 @@ router.patch("/configuration/custom-fields/:fieldId", async (req, res) => {
   }
 });
 
-router.post("/configuration/custom-fields/:fieldId/:state", async (req, res) => {
+router.post("/configuration/custom-fields/:fieldId/:state", manageCustomFields, async (req, res) => {
   try {
     const active = req.params.state === "activate";
     const [updated] = await db.update(customFieldDefinitions).set({ isActive: active, updatedAt: new Date() } as any)
@@ -172,7 +178,7 @@ router.get("/configuration/custom-fields/:fieldId/options", async (req, res) => 
   }
 });
 
-router.post("/configuration/custom-fields/:fieldId/options", async (req, res) => {
+router.post("/configuration/custom-fields/:fieldId/options", manageCustomFields, async (req, res) => {
   try {
     const [created] = await db.insert(customFieldOptions).values({
       tenantId: tenantIdFrom(req),
@@ -202,24 +208,43 @@ router.get("/configuration/custom-field-values/:objectType/:recordId", async (re
   }
 });
 
-router.put("/configuration/custom-field-values/:objectType/:recordId", async (req, res) => {
+router.put("/configuration/custom-field-values/:objectType/:recordId", manageCustomFields, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const values = Array.isArray(req.body.values) ? req.body.values : [];
     const saved = [];
     for (const value of values) {
-      const [created] = await db.insert(customFieldValues).values({
-        tenantId,
-        objectType: req.params.objectType,
-        recordId: req.params.recordId,
-        fieldId: value.fieldId,
+      const valuePayload = {
         valueText: value.valueText,
         valueNumber: value.valueNumber,
         valueBoolean: value.valueBoolean,
         valueDate: value.valueDate ? new Date(value.valueDate) : null,
         valueJson: value.valueJson,
-        createdBy: actorUserIdFrom(req),
         updatedBy: actorUserIdFrom(req),
+        updatedAt: new Date(),
+      };
+      const [existing] = await db.select().from(customFieldValues).where(and(
+        eq(customFieldValues.tenantId, tenantId),
+        eq(customFieldValues.objectType, req.params.objectType),
+        eq(customFieldValues.recordId, req.params.recordId),
+        eq(customFieldValues.fieldId, value.fieldId)
+      ));
+      if (existing) {
+        const [updated] = await db.update(customFieldValues)
+          .set(valuePayload as any)
+          .where(eq(customFieldValues.id, existing.id))
+          .returning();
+        saved.push(updated);
+        continue;
+      }
+
+      const [created] = await db.insert(customFieldValues).values({
+        tenantId,
+        objectType: req.params.objectType,
+        recordId: req.params.recordId,
+        fieldId: value.fieldId,
+        createdBy: actorUserIdFrom(req),
+        ...valuePayload,
       } as any).returning();
       saved.push(created);
     }
@@ -243,7 +268,7 @@ router.get("/configuration/workflows", async (req, res) => {
   }
 });
 
-router.post("/configuration/workflows", async (req, res) => {
+router.post("/configuration/workflows", manageWorkflows, async (req, res) => {
   try {
     const [created] = await db.insert(workflowDefinitions).values({
       tenantId: tenantIdFrom(req),
@@ -272,7 +297,7 @@ router.get("/configuration/workflows/:workflowId/states", async (req, res) => {
   }
 });
 
-router.post("/configuration/workflows/:workflowId/states", async (req, res) => {
+router.post("/configuration/workflows/:workflowId/states", manageWorkflows, async (req, res) => {
   try {
     const [created] = await db.insert(workflowStates).values({
       tenantId: tenantIdFrom(req),
@@ -304,7 +329,7 @@ router.get("/configuration/workflows/:workflowId/transitions", async (req, res) 
   }
 });
 
-router.post("/configuration/workflows/:workflowId/transitions", async (req, res) => {
+router.post("/configuration/workflows/:workflowId/transitions", manageWorkflows, async (req, res) => {
   try {
     const [created] = await db.insert(workflowTransitions).values({
       tenantId: tenantIdFrom(req),
@@ -329,7 +354,7 @@ router.post("/configuration/workflows/:workflowId/transitions", async (req, res)
   }
 });
 
-router.post("/configuration/workflow-instances", async (req, res) => {
+router.post("/configuration/workflow-instances", manageWorkflows, async (req, res) => {
   try {
     const [created] = await db.insert(workflowInstances).values({
       tenantId: tenantIdFrom(req),
@@ -346,7 +371,7 @@ router.post("/configuration/workflow-instances", async (req, res) => {
   }
 });
 
-router.post("/configuration/workflow-instances/:instanceId/transition", async (req, res) => {
+router.post("/configuration/workflow-instances/:instanceId/transition", manageWorkflows, async (req, res) => {
   try {
     const [instance] = await db.select().from(workflowInstances).where(eq(workflowInstances.id, req.params.instanceId));
     if (!instance) return res.status(404).json({ error: "Workflow instance not found" });
@@ -397,7 +422,7 @@ router.get("/configuration/workflows/:workflowId/designer", async (req, res) => 
   }
 });
 
-router.post("/configuration/workflows/:workflowId/validate", async (req, res) => {
+router.post("/configuration/workflows/:workflowId/validate", manageWorkflows, async (req, res) => {
   try {
     const states = await db.select().from(workflowStates).where(eq(workflowStates.workflowId, req.params.workflowId));
     const initial = states.filter(s => s.isInitial);
@@ -411,7 +436,7 @@ router.post("/configuration/workflows/:workflowId/validate", async (req, res) =>
   }
 });
 
-router.post("/configuration/workflows/:workflowId/activate", async (req, res) => {
+router.post("/configuration/workflows/:workflowId/activate", manageWorkflows, async (req, res) => {
   try {
     const tenantId = tenantIdFrom(req);
     const [wf] = await db.update(workflowDefinitions).set({ isActive: true } as any).where(eq(workflowDefinitions.id, req.params.workflowId)).returning();

@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { db } from "../../db";
 import { eq, and, like, desc, gt } from "drizzle-orm";
+import { authenticate, requirePermission, requireTenant } from "../../middleware/auth";
 import { kit_inventory, resin_lot_inventory, resin_consumption, parts, processes } from "../../../shared/schema";
 
 const router = Router();
+const canReadInventory = [authenticate, requireTenant];
+const canManageInventory = [authenticate, requireTenant, requirePermission("mes.work_order.execute")];
 
 // Helper to generate Kit Code
 async function generateKitCode(processId: number, kitType: 'KIT' | 'GLASS'): Promise<string> {
@@ -69,7 +72,7 @@ async function generateResinCode(): Promise<string> {
 }
 
 // POST /api/resin/create - Create a new Resin Lot
-router.post('/resin/create', async (req, res) => {
+router.post('/resin/create', canManageInventory, async (req, res) => {
     try {
         const { photoUrl, createdBy, weight } = req.body;
 
@@ -94,7 +97,7 @@ router.post('/resin/create', async (req, res) => {
 });
 
 // GET /api/materials/available
-router.get('/available', async (req, res) => {
+router.get('/available', canReadInventory, async (req, res) => {
     try {
         const processIdParam = req.query.processId as string;
         const materialType = req.query.materialType as string | undefined;
@@ -169,7 +172,7 @@ router.get('/available', async (req, res) => {
 });
 
 // POST /api/materials/create
-router.post('/create', async (req, res) => {
+router.post('/create', canManageInventory, async (req, res) => {
     try {
         const { materialType, createdBy, photoUrl, targetProcessId } = req.body;
 
@@ -229,7 +232,7 @@ router.post('/create', async (req, res) => {
  * - NO auto-consumption
  * - Admin/Inventory operation only
  */
-router.post('/resin/create', async (req, res) => {
+router.post('/resin/create', canManageInventory, async (req, res) => {
     try {
         const { photoUrl, createdBy, availableCount } = req.body;
 
@@ -273,7 +276,7 @@ router.post('/resin/create', async (req, res) => {
  * - NO auto-consumption
  * - Admin/Inventory operation only
  */
-router.post('/kits/create', async (req, res) => {
+router.post('/kits/create', canManageInventory, async (req, res) => {
     try {
         const { processId, kitType, photoUrl, createdBy } = req.body;
 
@@ -326,7 +329,7 @@ router.post('/kits/create', async (req, res) => {
 });
 
 // GET /api/inventory/dashboard-summary
-router.get('/dashboard-summary', async (req, res) => {
+router.get('/dashboard-summary', canReadInventory, async (req, res) => {
     try {
         const { processId, area } = req.query;
 

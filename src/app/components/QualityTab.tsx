@@ -8,14 +8,16 @@ import {
   ArrowRight, 
   ShieldAlert, 
   Check, 
-  Trash2, 
   Clock 
 } from 'lucide-react';
+import * as SafeIcons from '@/shared/ui/icons';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { useAuth } from '@/lib/AuthContext';
+
+const Trash2 = SafeIcons.Trash2;
 
 interface QualityCheck {
   parameter: string;

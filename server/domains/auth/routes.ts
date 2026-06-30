@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../db';
-import { employees } from '../../../shared/schema';
-import { eq } from 'drizzle-orm';
+import { employees, platformPendingInvites, platformUsers, platformTenants, platformRoles, platformUserRoleAssignments } from '../../../shared/schema';
+import { and, eq } from 'drizzle-orm';
 import { signInWithPassword, verifyToken } from '../../auth';
 
 const router = Router();
@@ -141,8 +141,6 @@ router.get('/me', async (req, res) => {
     }
 });
 
-import { platformPendingInvites, platformUsers, platformTenants, platformRoles, platformUserRoleAssignments } from '../../../shared/schema';
-import { and, eq } from 'drizzle-orm';
 import { createAuthUser } from '../../auth';
 
 router.get('/validate-invite', async (req, res) => {
